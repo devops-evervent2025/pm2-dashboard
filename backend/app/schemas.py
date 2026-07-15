@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from app.models import RoleEnum, EnvironmentEnum
 
 
+# ---------------- Auth ----------------
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -19,16 +20,24 @@ class UserCreate(BaseModel):
     role: RoleEnum = RoleEnum.viewer
 
 
+class UserUpdate(BaseModel):
+    role: Optional[RoleEnum] = None
+    is_active: Optional[bool] = None
+    email: Optional[str] = None
+
+
 class UserOut(BaseModel):
     id: int
     username: str
     email: Optional[str] = None
     role: RoleEnum
     is_active: bool
+
     class Config:
         from_attributes = True
 
 
+# ---------------- Clients ----------------
 class ClientCreate(BaseModel):
     name: str
     description: Optional[str] = None
@@ -40,10 +49,12 @@ class ClientOut(BaseModel):
     description: Optional[str] = None
     server_count: int = 0
     created_at: datetime.datetime
+
     class Config:
         from_attributes = True
 
 
+# ---------------- Servers ----------------
 class ServerCreate(BaseModel):
     client_id: int
     name: str
@@ -68,6 +79,7 @@ class ServerOut(BaseModel):
     environment: EnvironmentEnum
     tag: Optional[str] = None
     online: Optional[bool] = None
+
     class Config:
         from_attributes = True
 
@@ -98,6 +110,7 @@ class DetectPM2Response(BaseModel):
     detail: Optional[str] = None
 
 
+# ---------------- PM2 Processes ----------------
 class PM2Process(BaseModel):
     pm_id: int
     name: str

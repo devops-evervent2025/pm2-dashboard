@@ -33,6 +33,11 @@ export default function Navbar({ crumbs }: { crumbs?: { label: string; href?: st
           ))}
         </div>
         <div className="flex items-center gap-3">
+          {role === "admin" && (
+            <Link href="/dashboard/users" className="text-sm text-slate-500 hover:text-slate-800">
+              Manage Users
+            </Link>
+          )}
           {role && <span className={`badge ${ROLE_STYLES[role]}`}>{role}</span>}
           <span className="text-sm text-slate-600">{username}</span>
           <button onClick={logout} className="btn-secondary text-xs">

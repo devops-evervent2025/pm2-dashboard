@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth import authenticate_user, create_access_token, get_current_user, require_admin, hash_password
-from app.schemas import Token, UserOut, UserCreate
+from app.schemas import Token, UserOut, UserCreate, UserUpdate
 from app.models import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -47,3 +47,66 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db), _admin: User
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.patch("/users/{user_id}", response_model=UserOut)
+def update_user(
+    user_id: int,
+    payload: UserUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    update_data = payload.model_dump(exclude_unset=True)
+
+    demoting_self = user.id == admin.id and (
+        ("role" in update_data and update_data["role"] != "admin")
+        or ("is_active" in update_data and update_data["is_active"] is False)
+    )
+    if demoting_self:
+        other_active_admins = (
+            db.query(User)
+            .filter(User.role == "admin", User.is_active == True, User.id != admin.id)
+            .count()
+        )
+        if other_active_admins == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="You are the last active admin - promote another user to admin first.",
+            )
+
+    for field, value in update_data.items():
+        setattr(user, field, value)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.delete("/users/{user_id}")
+def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    if user_id == admin.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account.")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.role == "admin":
+        other_active_admins = (
+            db.query(User)
+            .filter(User.role == "admin", User.is_active == True, User.id != user.id)
+            .count()
+        )
+        if other_active_admins == 0:
+            raise HTTPException(status_code=400, detail="Cannot delete the last remaining admin.")
+
+    db.delete(user)
+    db.commit()
+    return {"detail": "User deleted"}

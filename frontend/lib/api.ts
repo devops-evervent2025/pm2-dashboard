@@ -72,3 +72,11 @@ export interface PM2ProcessItem {
   instances?: number | null;
   exec_mode?: string | null;
 }
+
+export interface UserItem {
+  id: number;
+  username: string;
+  email?: string | null;
+  role: Role;
+  is_active: boolean;
+}
