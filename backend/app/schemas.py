@@ -126,3 +126,51 @@ class PM2Process(BaseModel):
 
 class ProcessActionRequest(BaseModel):
     action: str = Field(..., pattern="^(restart|stop|start|delete|reload)$")
+
+
+# ---------------- Repo / .env browser (admin only) ----------------
+class RepoOut(BaseModel):
+    name: str
+
+
+class EnvKeyOut(BaseModel):
+    key: str
+    is_sensitive: bool
+    value: Optional[str] = None
+
+
+class EnvFileOut(BaseModel):
+    file_path: str
+    keys: List[EnvKeyOut]
+
+
+class RevealRequest(BaseModel):
+    file_path: str
+    key: str
+
+
+class RevealResponse(BaseModel):
+    key: str
+    value: str
+
+
+# ---------------- Remote repo scanning (per managed server, via SSH) ----------------
+class RepoScanPathCreate(BaseModel):
+    server_id: int
+    base_path: str
+    label: Optional[str] = None
+
+
+class RepoScanPathOut(BaseModel):
+    id: int
+    server_id: int
+    server_name: Optional[str] = None
+    base_path: str
+    label: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class RemoteRepoOut(BaseModel):
+    name: str

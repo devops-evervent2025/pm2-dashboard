@@ -1,0 +1,27 @@
+import datetime
+from sqlalchemy import Column, Integer, String, DateTime
+from app.database import Base
+
+
+class SSLDomain(Base):
+    """हर row एक server + manually दिया गया nginx config path represent करती है,
+    जिसका SSL certificate expiry हम track करते हैं।"""
+    __tablename__ = "ssl_domains"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    ip_address = Column(String(100), nullable=False)
+    ssh_port = Column(Integer, default=22)
+    ssh_username = Column(String(100), default="root")
+    ssh_password = Column(String(500), nullable=True)
+    ssh_private_key_path = Column(String(500), nullable=True)
+    config_path = Column(String(500), nullable=False)
+    threshold_days = Column(Integer, default=7)
+
+    domain_name = Column(String(255), nullable=True)
+    expiry_date = Column(DateTime, nullable=True)
+    days_remaining = Column(Integer, nullable=True)
+    last_checked_at = Column(DateTime, nullable=True)
+    last_check_error = Column(String(1000), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)

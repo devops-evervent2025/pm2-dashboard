@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     SSH_CONNECT_TIMEOUT: int = 10
     SSH_PRIVATE_KEY_PATH: str = ""
 
+    # Base directory containing your repos/projects, e.g. /var/www/fullstack
+    # Used ONLY by the admin-only repo/.env browser feature. The backend
+    # will never read outside this directory.
+    REPOS_BASE_DIR: str = "/var/www"
+
     @property
     def SQLALCHEMY_DATABASE_URL(self) -> str:
         return (

@@ -1,0 +1,75 @@
+"""
+हर SSL entry के लिए SSH से manually दिया गया nginx config path पढ़ता है,
+उसमें से ssl_certificate directive ढूँढता है, और openssl से expiry निकालता है।
+"""
+import re
+import shlex
+import datetime
+
+import paramiko
+
+from app.ssl_models import SSLDomain
+
+
+class SSLCheckError(Exception):
+    pass
+
+
+def _connect(domain: SSLDomain) -> paramiko.SSHClient:
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    connect_kwargs = dict(
+        hostname=domain.ip_address,
+        port=domain.ssh_port or 22,
+        username=domain.ssh_username or "root",
+        timeout=10,
+        banner_timeout=10,
+        auth_timeout=10,
+    )
+    try:
+        if domain.ssh_password:
+            connect_kwargs["password"] = domain.ssh_password
+        elif domain.ssh_private_key_path:
+            connect_kwargs["key_filename"] = domain.ssh_private_key_path
+        client.connect(**connect_kwargs)
+    except Exception as exc:
+        raise SSLCheckError(f"SSH connect fail हुआ: {exc}") from exc
+    return client
+
+
+def check_certificate(domain: SSLDomain) -> dict:
+    client = _connect(domain)
+    try:
+        cat_cmd = f"bash -lc {shlex.quote(f'cat {shlex.quote(domain.config_path)}')}"
+        stdin, stdout, stderr = client.exec_command(cat_cmd, timeout=10)
+        config_content = stdout.read().decode(errors="ignore")
+        err = stderr.read().decode(errors="ignore")
+        if not config_content and err:
+            raise SSLCheckError(f"config file नहीं पढ़ी जा सकी: {err.strip()}")
+
+        cert_match = re.search(r"ssl_certificate\s+([^\s;]+);", config_content)
+        if not cert_match:
+            raise SSLCheckError("दी गई config file में 'ssl_certificate' directive नहीं मिली")
+        cert_path = cert_match.group(1)
+
+        domain_match = re.search(r"server_name\s+([^;]+);", config_content)
+        domain_name = domain_match.group(1).strip().split()[0] if domain_match else None
+
+        openssl_cmd = f"bash -lc {shlex.quote(f'openssl x509 -enddate -noout -in {shlex.quote(cert_path)}')}"
+        stdin, stdout, stderr = client.exec_command(openssl_cmd, timeout=10)
+        out = stdout.read().decode(errors="ignore").strip()
+        err = stderr.read().decode(errors="ignore")
+        if not out:
+            raise SSLCheckError(f"openssl से certificate नहीं पढ़ा जा सका: {err.strip()}")
+
+        date_str = out.split("=", 1)[1].strip()
+        expiry_date = datetime.datetime.strptime(date_str, "%b %d %H:%M:%S %Y %Z")
+        days_remaining = (expiry_date - datetime.datetime.utcnow()).days
+
+        return {
+            "domain_name": domain_name,
+            "expiry_date": expiry_date,
+            "days_remaining": days_remaining,
+        }
+    finally:
+        client.close()

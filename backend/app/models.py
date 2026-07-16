@@ -80,3 +80,30 @@ class ProcessLogAudit(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     viewed_at = Column(DateTime, default=datetime.datetime.utcnow)
     note = Column(Text, nullable=True)
+
+
+
+class SecretRevealAudit(Base):
+    """Audit trail of who revealed which .env secret value, and when.
+    The actual secret value is never stored here - only what was looked at."""
+    __tablename__ = "secret_reveal_audit"
+
+    id = Column(Integer, primary_key=True, index=True)
+    repo_name = Column(String(255), nullable=False)
+    env_file_path = Column(String(500), nullable=False)
+    key_name = Column(String(255), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    revealed_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class RepoScanPath(Base):
+    """An admin-configured directory on a managed server to scan for repos
+    and their .env files, e.g. server=Amaze Dev, base_path=/var/www/frontend/Development."""
+    __tablename__ = "repo_scan_paths"
+
+    id = Column(Integer, primary_key=True, index=True)
+    server_id = Column(Integer, ForeignKey("servers.id"), nullable=False)
+    base_path = Column(String(500), nullable=False)
+    label = Column(String(255), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)

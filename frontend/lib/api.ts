@@ -80,3 +80,18 @@ export interface UserItem {
   role: Role;
   is_active: boolean;
 }
+
+export interface RepoItem {
+  name: string;
+}
+
+export interface EnvKeyItem {
+  key: string;
+  is_sensitive: boolean;
+  value?: string | null;
+}
+
+export interface EnvFileItem {
+  file_path: string;
+  keys: EnvKeyItem[];
+}

@@ -1,0 +1,286 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import Navbar from "@/components/Navbar";
+import AddSSLServerModal from "@/components/AddSSLServerModal";
+
+interface SSLCertificateItem {
+  id: number;
+  domain_name?: string | null;
+  config_file?: string | null;
+  cert_path?: string | null;
+  expiry_date?: string | null;
+  days_remaining?: number | null;
+  last_checked_at?: string | null;
+  last_check_error?: string | null;
+  status: "ok" | "warning" | "critical" | "expired" | "unknown";
+}
+
+interface SSLServerItem {
+  id: number;
+  name: string;
+  ip_address: string;
+  conf_dir: string;
+  threshold_days: number;
+  certificates: SSLCertificateItem[];
+}
+
+const STATUS_STYLES: Record<string, string> = {
+  ok: "bg-emerald-100 text-emerald-700",
+  warning: "bg-amber-100 text-amber-700",
+  critical: "bg-orange-100 text-orange-700",
+  expired: "bg-red-100 text-red-700",
+  unknown: "bg-slate-200 text-slate-600",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  ok: "OK",
+  warning: "Warning",
+  critical: "Critical",
+  expired: "Expired",
+  unknown: "Not checked yet",
+};
+
+function daysLabel(cert: SSLCertificateItem): string {
+  if (cert.days_remaining === null || cert.days_remaining === undefined) return "—";
+  if (cert.days_remaining < 0) return `Expired ${Math.abs(cert.days_remaining)} days ago`;
+  if (cert.days_remaining === 0) return "Expires today";
+  return `${cert.days_remaining} days left`;
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
+    >
+      <path
+        fillRule="evenodd"
+        d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
+
+export default function SSLDashboardPage() {
+  const { role, isLoading } = useAuth();
+  const router = useRouter();
+  const [servers, setServers] = useState<SSLServerItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [checkingAll, setCheckingAll] = useState(false);
+  const [checkingId, setCheckingId] = useState<number | null>(null);
+  const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
+  const [showAllDomains, setShowAllDomains] = useState(false);
+
+  const fetchServers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get<SSLServerItem[]>("/ssl/servers");
+      setServers(res.data);
+      setError(null);
+    } catch (err) {
+      setError("Could not load SSL servers");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isLoading && !role) {
+      router.replace("/login");
+      return;
+    }
+    if (role) fetchServers();
+  }, [role, isLoading, router, fetchServers]);
+
+  async function checkOne(id: number) {
+    setCheckingId(id);
+    try {
+      await api.post(`/ssl/servers/${id}/check`);
+      await fetchServers();
+    } catch {
+      // error will show up per-certificate via last_check_error after refresh
+    } finally {
+      setCheckingId(null);
+    }
+  }
+
+  async function refreshAll() {
+    setCheckingAll(true);
+    try {
+      await Promise.all(servers.map((s) => api.post(`/ssl/servers/${s.id}/check`).catch(() => null)));
+      await fetchServers();
+    } finally {
+      setCheckingAll(false);
+    }
+  }
+
+  async function handleDelete(id: number) {
+    if (!confirm("Delete this server and all its SSL entries?")) return;
+    await api.delete(`/ssl/servers/${id}`);
+    fetchServers();
+  }
+
+  function toggleCollapse(id: number) {
+    setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  return (
+    <div className="min-h-screen">
+      <Navbar />
+      <main className="max-w-6xl mx-auto px-4 py-8">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-semibold text-slate-800">SSL Dashboard</h1>
+            <p className="text-sm text-slate-500">
+              Domains and certificates are auto-detected from each server's nginx conf folder
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              className="btn-secondary"
+              onClick={refreshAll}
+              disabled={checkingAll || servers.length === 0}
+            >
+              {checkingAll ? "Checking…" : "Refresh all"}
+            </button>
+            {role === "admin" && (
+              <button className="btn-primary" onClick={() => setShowAddModal(true)}>
+                + Add Server
+              </button>
+            )}
+          </div>
+        </div>
+
+        <label className="flex items-center gap-2 text-sm text-slate-600 mb-4">
+          <input
+            type="checkbox"
+            checked={showAllDomains}
+            onChange={(e) => setShowAllDomains(e.target.checked)}
+          />
+          Show all domains (including ones that are OK, well within their alert threshold)
+        </label>
+
+        {loading && <p className="text-slate-500">Loading…</p>}
+        {error && <p className="text-red-600">{error}</p>}
+        {!loading && servers.length === 0 && (
+          <div className="card p-10 text-center text-slate-500">
+            No servers added yet. Click "+ Add Server" to add your first one.
+          </div>
+        )}
+
+        <div className="space-y-4">
+          {servers.map((server) => {
+            const isCollapsed = collapsed[server.id];
+            const visibleCerts = showAllDomains
+              ? server.certificates
+              : server.certificates.filter((c) => c.status !== "ok");
+            const hiddenCount = server.certificates.length - visibleCerts.length;
+
+            return (
+              <div key={server.id} className="card p-4">
+                <div className="flex items-center justify-between gap-4 mb-1">
+                  <button
+                    type="button"
+                    onClick={() => toggleCollapse(server.id)}
+                    className="flex items-center gap-2 text-left flex-1 min-w-0"
+                  >
+                    <ChevronIcon open={!isCollapsed} />
+                    <span className="font-medium text-slate-800">{server.name}</span>
+                    <span className="text-xs text-slate-400 truncate">
+                      {server.ip_address} · {server.conf_dir} · alert at {server.threshold_days}d
+                    </span>
+                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      className="btn-secondary text-xs"
+                      onClick={() => checkOne(server.id)}
+                      disabled={checkingId === server.id}
+                    >
+                      {checkingId === server.id ? "Checking…" : "Check now"}
+                    </button>
+                    {role === "admin" && (
+                      <button
+                        className="btn-secondary text-xs text-red-600"
+                        onClick={() => handleDelete(server.id)}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {!isCollapsed && (
+                  <>
+                    {server.certificates.length === 0 && (
+                      <p className="text-sm text-slate-400 pl-1 mt-2">
+                        Not checked yet - click "Check now".
+                      </p>
+                    )}
+
+                    {server.certificates.length > 0 && visibleCerts.length === 0 && (
+                      <p className="text-sm text-emerald-600 pl-1 mt-2">
+                        All {server.certificates.length} domain(s) are OK, well within the{" "}
+                        {server.threshold_days}-day alert threshold.
+                      </p>
+                    )}
+
+                    <div className="divide-y divide-slate-100 mt-2">
+                      {visibleCerts.map((cert) => (
+                        <div key={cert.id} className="py-2 flex items-center justify-between gap-4">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium text-slate-700">
+                                {cert.domain_name || cert.config_file || "unknown"}
+                              </span>
+                              <span className={`badge ${STATUS_STYLES[cert.status]}`}>
+                                {STATUS_LABELS[cert.status]}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {cert.config_file}
+                              {cert.cert_path ? ` · ${cert.cert_path}` : ""}
+                            </p>
+                            <p className="text-sm mt-0.5">
+                              {daysLabel(cert)}
+                              {cert.expiry_date && (
+                                <span className="text-slate-400">
+                                  {" "}
+                                  · expires {new Date(cert.expiry_date).toLocaleDateString()}
+                                </span>
+                              )}
+                            </p>
+                            {cert.last_check_error && (
+                              <p className="text-xs text-red-600 mt-0.5">⚠ {cert.last_check_error}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {!showAllDomains && hiddenCount > 0 && visibleCerts.length > 0 && (
+                      <p className="text-xs text-slate-400 mt-2 pl-1">
+                        {hiddenCount} more domain(s) hidden (OK, within threshold). Check "Show all
+                        domains" above to see them.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </main>
+      {showAddModal && (
+        <AddSSLServerModal onClose={() => setShowAddModal(false)} onCreated={fetchServers} />
+      )}
+    </div>
+  );
+}
