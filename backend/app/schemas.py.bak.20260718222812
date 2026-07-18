@@ -187,14 +187,3 @@ class EnvUpdateResponse(BaseModel):
     old_value: Optional[str] = None
     new_value: Optional[str] = None
     updated: bool
-
-
-class CurlCommandRequest(BaseModel):
-    command: str
-
-
-class CurlCommandResponse(BaseModel):
-    command: str
-    stdout: str
-    stderr: str
-    exit_status: Optional[int] = None

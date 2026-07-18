@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import Base, engine
-from app.routers import auth, clients, servers, processes, logs, system, remote_repos, ssl, terminal
+from app.routers import auth, clients, servers, processes, logs, system, remote_repos, ssl
 from app.init_db import bootstrap_admin
 from app import ssl_models  # noqa: F401
 
@@ -27,7 +27,6 @@ app.include_router(logs.router)
 app.include_router(system.router)
 app.include_router(remote_repos.router)
 app.include_router(ssl.router)
-app.include_router(terminal.router)
 
 
 @app.on_event("startup")
