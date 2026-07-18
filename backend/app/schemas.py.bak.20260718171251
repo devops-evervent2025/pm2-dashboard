@@ -174,16 +174,3 @@ class RepoScanPathOut(BaseModel):
 
 class RemoteRepoOut(BaseModel):
     name: str
-
-
-class EnvUpdateRequest(BaseModel):
-    file_path: str
-    key: str
-    value: str
-
-
-class EnvUpdateResponse(BaseModel):
-    key: str
-    old_value: Optional[str] = None
-    new_value: Optional[str] = None
-    updated: bool

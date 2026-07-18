@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useAuth } from "@/lib/auth";
 
 function NavItem({
   href,
@@ -32,7 +31,6 @@ function NavItem({
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { role } = useAuth();
 
   const isDashboardActive =
     pathname === "/dashboard" ||
@@ -85,22 +83,20 @@ export default function Sidebar() {
             </svg>
           }
         />
-        {role === "admin" && (
-          <NavItem
-            href="/dashboard/ssl"
-            label="SSL Dashboard"
-            active={isSslActive}
-            icon={
-              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                <path
-                  fillRule="evenodd"
-                  d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            }
-          />
-        )}
+        <NavItem
+          href="/dashboard/ssl"
+          label="SSL Dashboard"
+          active={isSslActive}
+          icon={
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+              <path
+                fillRule="evenodd"
+                d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+                clipRule="evenodd"
+              />
+            </svg>
+          }
+        />
       </nav>
     </aside>
   );

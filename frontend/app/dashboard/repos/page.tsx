@@ -6,26 +6,114 @@ import { api, RepoItem, EnvFileItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 
+interface ScanPath {
+  id: number;
+  server_id: number;
+  server_name?: string | null;
+  base_path: string;
+  label?: string | null;
+}
+
+interface ServerItem {
+  id: number;
+  name: string;
+}
+
+// एक unified list item - या तो local host का repo है, या किसी scan path (remote server) का
+interface UnifiedRepo {
+  key: string; // unique identifier इस list के लिए
+  name: string; // असली repo/folder नाम
+  source: "local" | { scanPathId: number; serverName: string; basePath: string };
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className={`w-3.5 h-3.5 transition-transform shrink-0 ${open ? "rotate-180" : ""}`}
+    >
+      <path
+        fillRule="evenodd"
+        d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
+
 export default function ReposPage() {
   const { role, isLoading } = useAuth();
   const router = useRouter();
 
-  const [repos, setRepos] = useState<RepoItem[]>([]);
-  const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
-  const [envFiles, setEnvFiles] = useState<EnvFileItem[]>([]);
+  const [unifiedRepos, setUnifiedRepos] = useState<UnifiedRepo[]>([]);
   const [loadingRepos, setLoadingRepos] = useState(true);
+  const [selected, setSelected] = useState<UnifiedRepo | null>(null);
+  const [envFiles, setEnvFiles] = useState<EnvFileItem[]>([]);
   const [loadingEnv, setLoadingEnv] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [revealed, setRevealed] = useState<Record<string, string>>({});
   const [revealing, setRevealing] = useState<string | null>(null);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [saving, setSaving] = useState<string | null>(null);
 
-  const fetchRepos = useCallback(async () => {
+  // scan-path management (admin)
+  const [scanPaths, setScanPaths] = useState<ScanPath[]>([]);
+  const [servers, setServers] = useState<ServerItem[]>([]);
+  const [showManage, setShowManage] = useState(false);
+  const [newServerId, setNewServerId] = useState<number | "">("");
+  const [newBasePath, setNewBasePath] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [addingScanPath, setAddingScanPath] = useState(false);
+
+  // repo list में हर group (Local / हर server) को अलग से collapse/expand
+  // करने के लिए
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+  const loadAll = useCallback(async () => {
     setLoadingRepos(true);
+    setError(null);
     try {
-      const res = await api.get<RepoItem[]>("/system/repos");
-      setRepos(res.data);
-      setError(null);
+      const [localRes, scanPathsRes, serversRes] = await Promise.all([
+        api.get<RepoItem[]>("/system/repos"),
+        api.get<ScanPath[]>("/remote-repos/scan-paths"),
+        api.get<ServerItem[]>("/servers"),
+      ]);
+
+      setScanPaths(scanPathsRes.data);
+      setServers(serversRes.data);
+
+      const items: UnifiedRepo[] = localRes.data.map((r) => ({
+        key: `local::${r.name}`,
+        name: r.name,
+        source: "local",
+      }));
+
+      const remoteResults = await Promise.all(
+        scanPathsRes.data.map((sp) =>
+          api
+            .get<RepoItem[]>(`/remote-repos/scan-paths/${sp.id}/repos`)
+            .then((res) => ({ sp, repos: res.data }))
+            .catch(() => ({ sp, repos: [] as RepoItem[] }))
+        )
+      );
+      for (const { sp, repos } of remoteResults) {
+        for (const r of repos) {
+          items.push({
+            key: `remote-${sp.id}::${r.name}`,
+            name: r.name,
+            source: {
+              scanPathId: sp.id,
+              serverName: sp.server_name || `Server #${sp.server_id}`,
+              basePath: sp.base_path,
+            },
+          });
+        }
+      }
+
+      setUnifiedRepos(items);
     } catch (err: any) {
       setError(err?.response?.data?.detail || "Failed to load repos");
     } finally {
@@ -38,20 +126,26 @@ export default function ReposPage() {
       router.replace("/login");
       return;
     }
-    if (!isLoading && role && role !== "admin") {
-      router.replace("/dashboard");
-      return;
-    }
-    if (role === "admin") fetchRepos();
-  }, [role, isLoading, router, fetchRepos]);
+    if (role) loadAll();
+  }, [role, isLoading, router, loadAll]);
 
-  async function openRepo(name: string) {
-    setSelectedRepo(name);
+  function envUrlFor(repo: UnifiedRepo, suffix: string): string {
+    if (repo.source === "local") {
+      return `/system/repos/${encodeURIComponent(repo.name)}/env${suffix}`;
+    }
+    return `/remote-repos/scan-paths/${repo.source.scanPathId}/repos/${encodeURIComponent(
+      repo.name
+    )}/env${suffix}`;
+  }
+
+  async function openRepo(repo: UnifiedRepo) {
+    setSelected(repo);
     setEnvFiles([]);
     setRevealed({});
+    setEditingKey(null);
     setLoadingEnv(true);
     try {
-      const res = await api.get<EnvFileItem[]>(`/system/repos/${encodeURIComponent(name)}/env`);
+      const res = await api.get<EnvFileItem[]>(envUrlFor(repo, ""));
       setEnvFiles(res.data);
       setError(null);
     } catch (err: any) {
@@ -61,15 +155,22 @@ export default function ReposPage() {
     }
   }
 
+  async function refreshEnv() {
+    if (!selected) return;
+    try {
+      const res = await api.get<EnvFileItem[]>(envUrlFor(selected, ""));
+      setEnvFiles(res.data);
+    } catch {
+      // ignore - existing view stays as-is
+    }
+  }
+
   async function reveal(filePath: string, key: string) {
-    if (!selectedRepo) return;
+    if (!selected) return;
     const mapKey = `${filePath}::${key}`;
     setRevealing(mapKey);
     try {
-      const res = await api.post(`/system/repos/${encodeURIComponent(selectedRepo)}/env/reveal`, {
-        file_path: filePath,
-        key,
-      });
+      const res = await api.post(envUrlFor(selected, "/reveal"), { file_path: filePath, key });
       setRevealed((prev) => ({ ...prev, [mapKey]: res.data.value }));
     } catch (err: any) {
       alert(err?.response?.data?.detail || "Failed to reveal value");
@@ -87,20 +188,155 @@ export default function ReposPage() {
     });
   }
 
-  if (role && role !== "admin") return null;
+  function startEdit(filePath: string, key: string, currentValue: string) {
+    setEditingKey(`${filePath}::${key}`);
+    setEditValue(currentValue);
+  }
+
+  function cancelEdit() {
+    setEditingKey(null);
+    setEditValue("");
+  }
+
+  async function saveEdit(filePath: string, key: string) {
+    if (!selected) return;
+    const mapKey = `${filePath}::${key}`;
+    const target = selected.source === "local" ? "this server (local)" : selected.source.serverName;
+    if (!confirm(`Update ${key} in ${selected.name}/${filePath} on ${target}? A backup is made automatically before saving.`)) {
+      return;
+    }
+    setSaving(mapKey);
+    try {
+      await api.post(envUrlFor(selected, "/update"), { file_path: filePath, key, value: editValue });
+      setEditingKey(null);
+      setEditValue("");
+      setRevealed((prev) => {
+        const next = { ...prev };
+        delete next[mapKey];
+        return next;
+      });
+      await refreshEnv();
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Failed to save the new value");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function addScanPath() {
+    if (!newServerId || !newBasePath.trim()) return;
+    setAddingScanPath(true);
+    try {
+      await api.post("/remote-repos/scan-paths", {
+        server_id: newServerId,
+        base_path: newBasePath.trim(),
+        label: newLabel.trim() || null,
+      });
+      setNewServerId("");
+      setNewBasePath("");
+      setNewLabel("");
+      await loadAll();
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Failed to add scan path");
+    } finally {
+      setAddingScanPath(false);
+    }
+  }
+
+  async function removeScanPath(id: number) {
+    if (!confirm("Remove this scan path? (This only stops scanning it here - nothing is deleted on the server.)")) return;
+    await api.delete(`/remote-repos/scan-paths/${id}`);
+    await loadAll();
+  }
+
+  function groupLabel(source: UnifiedRepo["source"]): string {
+    return source === "local" ? "Local (this server)" : source.serverName;
+  }
+
+  function toggleGroup(label: string) {
+    setCollapsedGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+  }
 
   return (
     <div className="min-h-screen">
       <Navbar crumbs={[{ label: "Repos & Env" }]} />
-      <main className="max-w-5xl mx-auto px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-slate-800">Repos & Env</h1>
-          <p className="text-sm text-slate-500">
-            Browse projects on this server and their <span className="font-mono">.env</span> files.
-            Sensitive values (passwords, secrets, keys, tokens) are hidden by default — click Reveal
-            to view one at a time. Every reveal is logged.
-          </p>
+      <main className="max-w-6xl mx-auto px-4 py-8">
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-slate-800">Repos & Env</h1>
+            <p className="text-sm text-slate-500">
+              Browse projects on this dashboard host AND on any managed remote server, and their{" "}
+              <span className="font-mono">.env</span> files. Sensitive values are hidden by default —
+              click Reveal to view one at a time. Every reveal and every edit is logged, and a backup
+              is made automatically before any change is saved.
+            </p>
+          </div>
+          {role === "admin" && (
+            <button className="btn-secondary text-xs whitespace-nowrap" onClick={() => setShowManage((v) => !v)}>
+              {showManage ? "Hide scan paths" : "Manage remote scan paths"}
+            </button>
+          )}
         </div>
+
+        {showManage && (
+          <div className="card p-4 mb-6">
+            <h2 className="text-sm font-medium text-slate-700 mb-3">Remote scan paths</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-3">
+              <select
+                className="input-field text-sm"
+                value={newServerId}
+                onChange={(e) => setNewServerId(e.target.value ? Number(e.target.value) : "")}
+              >
+                <option value="">Select server…</option>
+                {servers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="input-field text-sm"
+                placeholder="Base path e.g. /var/www"
+                value={newBasePath}
+                onChange={(e) => setNewBasePath(e.target.value)}
+              />
+              <input
+                className="input-field text-sm"
+                placeholder="Label (optional)"
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+              />
+              <button
+                className="btn-primary text-sm"
+                onClick={addScanPath}
+                disabled={addingScanPath || !newServerId || !newBasePath.trim()}
+              >
+                {addingScanPath ? "Adding…" : "+ Add"}
+              </button>
+            </div>
+            {scanPaths.length === 0 ? (
+              <p className="text-xs text-slate-400">No remote scan paths configured yet.</p>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {scanPaths.map((sp) => (
+                  <div key={sp.id} className="py-2 flex items-center justify-between text-sm">
+                    <span>
+                      <span className="font-medium">{sp.server_name}</span>
+                      <span className="text-slate-400"> · {sp.base_path}</span>
+                      {sp.label && <span className="text-slate-400"> · {sp.label}</span>}
+                    </span>
+                    <button
+                      className="text-xs text-red-600 hover:text-red-700"
+                      onClick={() => removeScanPath(sp.id)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {error && <p className="text-red-600 mb-4">{error}</p>}
 
@@ -108,49 +344,74 @@ export default function ReposPage() {
           <div className="md:col-span-1">
             <div className="card divide-y divide-slate-100 overflow-hidden">
               {loadingRepos && <p className="p-4 text-sm text-slate-500">Loading repos…</p>}
-              {!loadingRepos && repos.length === 0 && !error && (
+              {!loadingRepos && unifiedRepos.length === 0 && !error && (
                 <p className="p-4 text-sm text-slate-500">No repos found.</p>
               )}
-              {repos.map((r) => (
-                <button
-                  key={r.name}
-                  onClick={() => openRepo(r.name)}
-                  className={`w-full text-left px-4 py-3 text-sm transition-colors ${
-                    selectedRepo === r.name
-                      ? "bg-brand-50 text-brand-700 font-medium"
-                      : "hover:bg-slate-50 text-slate-700"
-                  }`}
-                >
-                  {r.name}
-                </button>
-              ))}
+              {!loadingRepos &&
+                Object.entries(
+                  unifiedRepos.reduce<Record<string, UnifiedRepo[]>>((acc, r) => {
+                    const label = groupLabel(r.source);
+                    (acc[label] = acc[label] || []).push(r);
+                    return acc;
+                  }, {})
+                ).map(([label, repos]) => {
+                  const isCollapsed = collapsedGroups[label];
+                  return (
+                    <div key={label}>
+                      <button
+                        onClick={() => toggleGroup(label)}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 bg-slate-50 text-left text-xs font-medium text-slate-500 uppercase tracking-wide hover:bg-slate-100"
+                      >
+                        <ChevronIcon open={!isCollapsed} />
+                        {label}
+                        <span className="ml-auto normal-case font-normal text-slate-400">
+                          {repos.length}
+                        </span>
+                      </button>
+                      {!isCollapsed &&
+                        repos.map((r) => (
+                          <button
+                            key={r.key}
+                            onClick={() => openRepo(r)}
+                            className={`w-full text-left px-4 py-2.5 pl-8 text-sm transition-colors ${
+                              selected?.key === r.key
+                                ? "bg-brand-50 text-brand-700 font-medium"
+                                : "hover:bg-slate-50 text-slate-700"
+                            }`}
+                          >
+                            {r.name}
+                          </button>
+                        ))}
+                    </div>
+                  );
+                })}
             </div>
           </div>
 
           <div className="md:col-span-2">
-            {!selectedRepo && (
+            {!selected && (
               <div className="card p-10 text-center text-slate-500 text-sm">
                 Select a repo on the left to view its .env files.
               </div>
             )}
 
-            {selectedRepo && loadingEnv && (
-              <p className="text-sm text-slate-500">Loading .env files for {selectedRepo}…</p>
+            {selected && loadingEnv && (
+              <p className="text-sm text-slate-500">Loading .env files for {selected.name}…</p>
             )}
 
-            {selectedRepo && !loadingEnv && envFiles.length === 0 && !error && (
+            {selected && !loadingEnv && envFiles.length === 0 && !error && (
               <div className="card p-10 text-center text-slate-500 text-sm">
                 No .env files found for this repo (checked .env, backend/.env, frontend/.env).
               </div>
             )}
 
-            {selectedRepo &&
+            {selected &&
               !loadingEnv &&
               envFiles.map((file) => (
                 <div key={file.file_path} className="card p-0 overflow-hidden mb-4">
                   <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
                     <span className="text-sm font-mono text-slate-700">
-                      {selectedRepo}/{file.file_path}
+                      {selected.name}/{file.file_path}
                     </span>
                   </div>
                   <div className="divide-y divide-slate-100">
@@ -158,44 +419,85 @@ export default function ReposPage() {
                       const mapKey = `${file.file_path}::${k.key}`;
                       const isRevealed = mapKey in revealed;
                       const isBusy = revealing === mapKey;
+                      const isEditing = editingKey === mapKey;
+                      const isSaving = saving === mapKey;
+                      const currentPlainValue = !k.is_sensitive ? k.value || "" : revealed[mapKey];
+
                       return (
-                        <div
-                          key={k.key}
-                          className="px-4 py-2.5 flex items-center justify-between gap-4 text-sm"
-                        >
+                        <div key={k.key} className="px-4 py-2.5 flex items-center justify-between gap-4 text-sm">
                           <span className="font-mono text-slate-600 shrink-0">{k.key}</span>
-                          <div className="flex items-center gap-2 min-w-0">
-                            {!k.is_sensitive ? (
-                              <span className="font-mono text-slate-800 truncate">
-                                {k.value || <span className="text-slate-400">(empty)</span>}
-                              </span>
-                            ) : isRevealed ? (
-                              <>
-                                <span className="font-mono text-red-700 truncate">
-                                  {revealed[mapKey]}
-                                </span>
-                                <button
-                                  onClick={() => hide(file.file_path, k.key)}
-                                  className="text-xs text-slate-400 hover:text-slate-600 shrink-0"
-                                >
-                                  Hide
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <span className="font-mono text-slate-400 tracking-widest">
-                                  ••••••••
-                                </span>
-                                <button
-                                  disabled={isBusy}
-                                  onClick={() => reveal(file.file_path, k.key)}
-                                  className="text-xs text-brand-600 hover:text-brand-700 shrink-0"
-                                >
-                                  {isBusy ? "…" : "Reveal"}
-                                </button>
-                              </>
-                            )}
-                          </div>
+
+                          {isEditing ? (
+                            <div className="flex items-center gap-2 min-w-0 flex-1 justify-end">
+                              <input
+                                className="input-field font-mono text-xs py-1 flex-1 max-w-xs"
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                autoFocus
+                              />
+                              <button
+                                disabled={isSaving}
+                                onClick={() => saveEdit(file.file_path, k.key)}
+                                className="text-xs text-emerald-600 hover:text-emerald-700 shrink-0"
+                              >
+                                {isSaving ? "Saving…" : "Save"}
+                              </button>
+                              <button
+                                disabled={isSaving}
+                                onClick={cancelEdit}
+                                className="text-xs text-slate-400 hover:text-slate-600 shrink-0"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 min-w-0">
+                              {!k.is_sensitive ? (
+                                <>
+                                  <span className="font-mono text-slate-800 truncate">
+                                    {k.value || <span className="text-slate-400">(empty)</span>}
+                                  </span>
+                                  {role === "admin" && (
+                                    <button
+                                      onClick={() => startEdit(file.file_path, k.key, k.value || "")}
+                                      className="text-xs text-brand-600 hover:text-brand-700 shrink-0"
+                                    >
+                                      Edit
+                                    </button>
+                                  )}
+                                </>
+                              ) : isRevealed ? (
+                                <>
+                                  <span className="font-mono text-red-700 truncate">{revealed[mapKey]}</span>
+                                  {role === "admin" && (
+                                    <button
+                                      onClick={() => startEdit(file.file_path, k.key, currentPlainValue || "")}
+                                      className="text-xs text-brand-600 hover:text-brand-700 shrink-0"
+                                    >
+                                      Edit
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => hide(file.file_path, k.key)}
+                                    className="text-xs text-slate-400 hover:text-slate-600 shrink-0"
+                                  >
+                                    Hide
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="font-mono text-slate-400 tracking-widest">••••••••</span>
+                                  <button
+                                    disabled={isBusy}
+                                    onClick={() => reveal(file.file_path, k.key)}
+                                    className="text-xs text-brand-600 hover:text-brand-700 shrink-0"
+                                  >
+                                    {isBusy ? "…" : "Reveal"}
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })}

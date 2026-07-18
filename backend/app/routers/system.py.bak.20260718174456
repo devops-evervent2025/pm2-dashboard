@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.auth import require_admin, get_current_user
+from app.auth import require_admin
 from app.models import User, SecretRevealAudit
 from app.schemas import RepoOut, EnvFileOut, EnvKeyOut, RevealRequest, RevealResponse
 
@@ -89,7 +89,7 @@ def _candidate_paths_for_repo(repo_dir: str) -> List[str]:
 
 
 @router.get("/repos", response_model=List[RepoOut])
-def list_repos(_user: User = Depends(get_current_user)):
+def list_repos(_admin: User = Depends(require_admin)):
     base = settings.REPOS_BASE_DIR
     if not os.path.isdir(base):
         raise HTTPException(status_code=404, detail=f"REPOS_BASE_DIR '{base}' does not exist on the server")
@@ -103,7 +103,7 @@ def list_repos(_user: User = Depends(get_current_user)):
 
 
 @router.get("/repos/{repo_name}/env", response_model=List[EnvFileOut])
-def get_repo_env(repo_name: str, _user: User = Depends(get_current_user)):
+def get_repo_env(repo_name: str, _admin: User = Depends(require_admin)):
     repo_dir = _resolve_repo_dir(repo_name)
     files = _candidate_paths_for_repo(repo_dir)
 

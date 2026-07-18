@@ -1,7 +1,8 @@
 """
-Admin-only browser for repo directories and their .env files on MANAGED
-SERVERS (the ones already added under Clients -> Servers), accessed over
-SSH using that server's own stored credentials - no new credentials needed.
+Admin-only browser (and now, editor) for repo directories and their .env
+files on MANAGED SERVERS (the ones already added under Clients -> Servers),
+accessed over SSH using that server's own stored credentials - no new
+credentials needed.
 
 Safety measures (mirrors app/routers/system.py's local-filesystem version):
   1. repo_name is validated to contain no path separators or ".." before
@@ -11,10 +12,22 @@ Safety measures (mirrors app/routers/system.py's local-filesystem version):
   3. Listing never returns sensitive values in bulk - only key names +
      redacted placeholders. A separate reveal endpoint returns ONE value
      at a time and every reveal is written to an audit table.
-  4. All remote commands go through ssh_manager.run_command(), which
+  4. All remote read commands go through ssh_manager.run_command(), which
      already wraps everything in a quoted login shell (bash -lc) - no
      raw string concatenation of untrusted input into a shell command.
+  5. Editing (update_remote_env_value) only allows changing the VALUE of
+     a key that already exists in the file - never adds new keys. A
+     timestamped backup is made on the remote server (via `cp`) before
+     every edit, the write itself is done to a temp file over SFTP and
+     then atomically renamed into place via `mv` over SSH, and every edit
+     is logged to the same audit table used for local edits (with
+     server_id set, so it's clear which server was touched).
+  6. Every endpoint here (read AND write) requires admin - the same
+     role gate as the local Repos & Env feature, so this is fully
+     role-based: viewers never see or touch any of this.
 """
+import os
+import re
 import shlex
 from typing import List, Optional
 
@@ -22,13 +35,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.auth import require_admin
+from app.auth import require_admin, get_current_user
 from app.models import User, Server, RepoScanPath, SecretRevealAudit
+from app.env_audit_models import EnvEditAudit
 from app.schemas import (
     RepoScanPathCreate, RepoScanPathOut, RemoteRepoOut,
     EnvFileOut, EnvKeyOut, RevealRequest, RevealResponse,
+    EnvUpdateRequest, EnvUpdateResponse,
 )
-from app.ssh_manager import run_command, SSHConnectionError
+from app.ssh_manager import run_command, _connect, SSHConnectionError
 
 router = APIRouter(prefix="/remote-repos", tags=["remote-repos"])
 
@@ -36,6 +51,8 @@ SENSITIVE_KEYWORDS = (
     "PASSWORD", "SECRET", "TOKEN", "KEY", "PWD", "CREDENTIAL", "PRIVATE", "APIKEY"
 )
 CANDIDATE_ENV_PATHS = [".env", ".env.local", "backend/.env", "frontend/.env"]
+
+_ENV_LINE_RE = re.compile(r'^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$')
 
 
 def _is_sensitive(key: str) -> bool:
@@ -61,6 +78,15 @@ def _parse_env_text(text: str) -> List[tuple]:
     return pairs
 
 
+def _format_env_value(value: str, was_quoted_with: Optional[str]) -> str:
+    needs_quoting = (" " in value) or ("#" in value) or (value == "")
+    quote_char = was_quoted_with or ('"' if needs_quoting else None)
+    if quote_char:
+        escaped = value.replace("\\", "\\\\").replace(quote_char, "\\" + quote_char)
+        return f"{quote_char}{escaped}{quote_char}"
+    return value
+
+
 def _validate_repo_name(repo_name: str):
     if not repo_name or "/" in repo_name or "\\" in repo_name or repo_name in (".", ".."):
         raise HTTPException(status_code=400, detail="Invalid repo name")
@@ -80,11 +106,87 @@ def _get_server_or_404(server_id: int, db: Session) -> Server:
     return server
 
 
+def update_remote_env_value(server: Server, full_path: str, key: str, new_value: str) -> str:
+    """
+    Updates ONLY the value for an existing key on its existing line in a
+    .env file on a remote server, over SFTP. Backs up the remote file
+    first (via `cp` over SSH), writes the new content to a temp remote
+    file over SFTP, then atomically renames it into place (via `mv` over
+    SSH). Returns the previous value. Raises ValueError if the key isn't
+    found or the new value is unsafe (contains a newline).
+    """
+    if "\n" in new_value or "\r" in new_value:
+        raise ValueError("Value cannot contain a newline")
+
+    client = _connect(server)
+    try:
+        sftp = client.open_sftp()
+        try:
+            with sftp.open(full_path, "r") as f:
+                raw = f.read()
+        except IOError as exc:
+            raise ValueError(f"Could not read {full_path}: {exc}") from exc
+
+        content = raw.decode("utf-8", errors="ignore")
+        lines = content.splitlines(keepends=True)
+
+        target_idx = None
+        old_value = None
+        quote_char = None
+        for i, raw_line in enumerate(lines):
+            stripped = raw_line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            match = _ENV_LINE_RE.match(stripped)
+            if not match:
+                continue
+            line_key, line_val = match.group(1), match.group(2)
+            if line_key != key:
+                continue
+            target_idx = i
+            if (line_val.startswith('"') and line_val.endswith('"')) or (
+                line_val.startswith("'") and line_val.endswith("'")
+            ):
+                quote_char = line_val[0]
+                old_value = line_val[1:-1]
+            else:
+                old_value = line_val
+            break
+
+        if target_idx is None:
+            raise ValueError(f"Key '{key}' not found in this file - only existing keys can be edited")
+
+        new_formatted = _format_env_value(new_value, quote_char)
+        original = lines[target_idx]
+        prefix_ws = original[: len(original) - len(original.lstrip())]
+        newline_suffix = "\n" if original.endswith("\n") else ""
+        lines[target_idx] = f"{prefix_ws}{key}={new_formatted}{newline_suffix}"
+        new_content = "".join(lines)
+
+        # backup पहले बनाते हैं (remote server पर ही, cp कमांड से)
+        backup_cmd = (
+            f"cp {shlex.quote(full_path)} "
+            f"{shlex.quote(full_path)}.bak.$(date +%Y%m%d%H%M%S)"
+        )
+        run_command(server, backup_cmd)
+
+        # atomic write: पहले एक temp remote file पर SFTP से लिखते हैं, फिर
+        # remote `mv` से असली जगह rename करते हैं
+        tmp_path = f"{full_path}.tmp.{os.getpid()}"
+        with sftp.open(tmp_path, "w") as f:
+            f.write(new_content)
+        run_command(server, f"mv {shlex.quote(tmp_path)} {shlex.quote(full_path)}")
+
+        return old_value
+    finally:
+        client.close()
+
+
 @router.get("/scan-paths", response_model=List[RepoScanPathOut])
 def list_scan_paths(
     server_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(get_current_user),
 ):
     query = db.query(RepoScanPath)
     if server_id is not None:
@@ -140,7 +242,7 @@ def delete_scan_path(
 
 @router.get("/scan-paths/{scan_path_id}/repos", response_model=List[RemoteRepoOut])
 def list_remote_repos(
-    scan_path_id: int, db: Session = Depends(get_db), _admin: User = Depends(require_admin)
+    scan_path_id: int, db: Session = Depends(get_db), _user: User = Depends(get_current_user)
 ):
     sp = _get_scan_path_or_404(scan_path_id, db)
     server = _get_server_or_404(sp.server_id, db)
@@ -163,7 +265,7 @@ def get_remote_repo_env(
     scan_path_id: int,
     repo_name: str,
     db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(get_current_user),
 ):
     _validate_repo_name(repo_name)
     sp = _get_scan_path_or_404(scan_path_id, db)
@@ -201,7 +303,7 @@ def reveal_remote_env_value(
     repo_name: str,
     payload: RevealRequest,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin),
+    user: User = Depends(get_current_user),
 ):
     _validate_repo_name(repo_name)
     if payload.file_path not in CANDIDATE_ENV_PATHS:
@@ -226,10 +328,53 @@ def reveal_remote_env_value(
             repo_name=f"{server.name}:{repo_name}",
             env_file_path=payload.file_path,
             key_name=payload.key,
-            user_id=admin.id,
-            server_id=server.id,
+            user_id=user.id,
         )
     )
     db.commit()
 
     return RevealResponse(key=payload.key, value=pairs[payload.key])
+
+
+@router.post("/scan-paths/{scan_path_id}/repos/{repo_name}/env/update", response_model=EnvUpdateResponse)
+def update_remote_env_value_endpoint(
+    scan_path_id: int,
+    repo_name: str,
+    payload: EnvUpdateRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    _validate_repo_name(repo_name)
+    if payload.file_path not in CANDIDATE_ENV_PATHS:
+        raise HTTPException(status_code=400, detail="Unknown or disallowed env file")
+
+    sp = _get_scan_path_or_404(scan_path_id, db)
+    server = _get_server_or_404(sp.server_id, db)
+    full_path = f"{sp.base_path}/{repo_name}/{payload.file_path}"
+
+    try:
+        old_value = update_remote_env_value(server, full_path, payload.key, payload.value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except SSHConnectionError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    is_sensitive = _is_sensitive(payload.key)
+    db.add(
+        EnvEditAudit(
+            repo_name=f"{server.name}:{repo_name}",
+            env_file_path=payload.file_path,
+            key_name=payload.key,
+            was_sensitive=is_sensitive,
+            server_id=server.id,
+            user_id=admin.id,
+        )
+    )
+    db.commit()
+
+    return EnvUpdateResponse(
+        key=payload.key,
+        old_value=None if is_sensitive else old_value,
+        new_value=None if is_sensitive else payload.value,
+        updated=True,
+    )
