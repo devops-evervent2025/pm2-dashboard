@@ -1,0 +1,129 @@
+"""
+Curl-only "Server Terminal" that allows running ONLY curl commands
+against a managed server, over that server's existing SSH credentials.
+This is intentionally NOT a general-purpose shell.
+
+Guardrails (enforced server-side, cannot be bypassed from the frontend):
+  1. The command must be a `curl` invocation - nothing else.
+  2. No file-download flags are allowed (-o/-O/--output/--remote-name/-J/...),
+     so this can never be used to pull files onto the dashboard host.
+  3. Commands that look like a browser "Copy as cURL" paste (they carry
+     Cookie / Sec-Fetch-* / sec-ch-ua headers) are rejected, since those
+     headers can leak session cookies/auth from whoever copied them.
+  4. Every attempt - accepted or rejected - is written to curl_command_audit
+     (who, what command, when, exit status; NULL exit status = rejected).
+
+Available to any authenticated role (admin, developer, viewer) - there is
+no destructive action possible through this endpoint by design.
+"""
+import shlex
+import datetime
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.auth import require_any_role
+from app.models import User, Server, CurlCommandAudit
+from app.schemas import CurlCommandRequest, CurlCommandResponse
+from app.ssh_manager import run_restricted_command, SSHConnectionError
+
+router = APIRouter(prefix="/servers/{server_id}/terminal", tags=["terminal"])
+
+MAX_COMMAND_LENGTH = 4000
+COMMAND_TIMEOUT_SECONDS = 20
+
+BLOCKED_FLAGS = {
+    "-o", "-O", "--output", "--remote-name", "--remote-name-all",
+    "-J", "--remote-header-name", "--output-dir", "-D", "--dump-header",
+}
+BROWSER_COPY_HEADER_MARKERS = (
+    "cookie:", "sec-ch-ua", "sec-fetch-", "x-client-data", "sec-ch-ua-platform",
+)
+
+
+def _validate_curl_command(raw: str) -> str:
+    """Returns an error message if the command is disallowed, else ''."""
+    if not raw or not raw.strip():
+        return "Command cannot be empty."
+    if len(raw) > MAX_COMMAND_LENGTH:
+        return f"Command exceeds max length of {MAX_COMMAND_LENGTH} characters."
+
+    try:
+        tokens = shlex.split(raw)
+    except ValueError as exc:
+        return f"Could not parse command: {exc}"
+
+    if not tokens:
+        return "Command cannot be empty."
+
+    # Strip a leading env-var assignment or two (e.g. FOO=bar curl ...) then
+    # require the next token to literally be curl.
+    idx = 0
+    while idx < len(tokens) and "=" in tokens[idx] and not tokens[idx].startswith("-"):
+        idx += 1
+    if idx >= len(tokens) or tokens[idx] != "curl":
+        return "Only curl commands are allowed."
+
+    lowered = raw.lower()
+    for marker in BROWSER_COPY_HEADER_MARKERS:
+        if marker in lowered:
+            return (
+                "This looks like a command copied from a browser's 'Copy as cURL' "
+                "(it contains session/browser fingerprint headers). Please write a "
+                "plain curl command instead - don't paste browser-copied requests."
+            )
+
+    for token in tokens[idx:]:
+        flag = token.split("=", 1)[0]
+        if flag in BLOCKED_FLAGS:
+            return f"The flag '{flag}' is not allowed (no downloading files through this terminal)."
+
+    if ";" in raw or "&&" in raw or "|" in raw or "`" in raw or "$(" in raw:
+        return "Command chaining/piping/substitution is not allowed - a single curl call only."
+
+    return ""
+
+
+def _log_attempt(db: Session, server_id: int, user_id: int, command: str, exit_status):
+    db.add(
+        CurlCommandAudit(
+            server_id=server_id,
+            user_id=user_id,
+            command=command,
+            exit_status=exit_status,
+            executed_at=datetime.datetime.utcnow(),
+        )
+    )
+    db.commit()
+
+
+@router.post("", response_model=CurlCommandResponse)
+def run_curl_command(
+    server_id: int,
+    payload: CurlCommandRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_any_role),
+):
+    server = db.query(Server).filter(Server.id == server_id).first()
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+
+    error = _validate_curl_command(payload.command)
+    if error:
+        _log_attempt(db, server_id, user.id, payload.command, None)
+        raise HTTPException(status_code=400, detail=error)
+
+    try:
+        result = run_restricted_command(server, payload.command, timeout=COMMAND_TIMEOUT_SECONDS)
+    except SSHConnectionError as exc:
+        _log_attempt(db, server_id, user.id, payload.command, None)
+        raise HTTPException(status_code=502, detail=f"Could not connect to server: {exc}") from exc
+
+    _log_attempt(db, server_id, user.id, payload.command, result.get("exit_status"))
+
+    return CurlCommandResponse(
+        command=payload.command,
+        stdout=result.get("stdout", ""),
+        stderr=result.get("stderr", ""),
+        exit_status=result.get("exit_status"),
+    )

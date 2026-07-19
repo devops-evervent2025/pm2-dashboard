@@ -35,7 +35,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.auth import require_admin, get_current_user
+from app.auth import require_admin
 from app.models import User, Server, RepoScanPath, SecretRevealAudit
 from app.env_audit_models import EnvEditAudit
 from app.schemas import (
@@ -186,7 +186,7 @@ def update_remote_env_value(server: Server, full_path: str, key: str, new_value:
 def list_scan_paths(
     server_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _admin: User = Depends(require_admin),
 ):
     query = db.query(RepoScanPath)
     if server_id is not None:
@@ -242,7 +242,7 @@ def delete_scan_path(
 
 @router.get("/scan-paths/{scan_path_id}/repos", response_model=List[RemoteRepoOut])
 def list_remote_repos(
-    scan_path_id: int, db: Session = Depends(get_db), _user: User = Depends(get_current_user)
+    scan_path_id: int, db: Session = Depends(get_db), _admin: User = Depends(require_admin)
 ):
     sp = _get_scan_path_or_404(scan_path_id, db)
     server = _get_server_or_404(sp.server_id, db)
@@ -265,7 +265,7 @@ def get_remote_repo_env(
     scan_path_id: int,
     repo_name: str,
     db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
+    _admin: User = Depends(require_admin),
 ):
     _validate_repo_name(repo_name)
     sp = _get_scan_path_or_404(scan_path_id, db)
@@ -303,7 +303,7 @@ def reveal_remote_env_value(
     repo_name: str,
     payload: RevealRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    admin: User = Depends(require_admin),
 ):
     _validate_repo_name(repo_name)
     if payload.file_path not in CANDIDATE_ENV_PATHS:
@@ -328,7 +328,8 @@ def reveal_remote_env_value(
             repo_name=f"{server.name}:{repo_name}",
             env_file_path=payload.file_path,
             key_name=payload.key,
-            user_id=user.id,
+            user_id=admin.id,
+            server_id=server.id,
         )
     )
     db.commit()

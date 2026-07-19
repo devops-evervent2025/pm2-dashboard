@@ -107,3 +107,16 @@ class RepoScanPath(Base):
     label = Column(String(255), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class CurlCommandAudit(Base):
+    """Audit trail of every restricted curl command run against a managed
+    server through the Server Terminal feature - who ran what, when."""
+    __tablename__ = "curl_command_audit"
+
+    id = Column(Integer, primary_key=True, index=True)
+    server_id = Column(Integer, ForeignKey("servers.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    command = Column(Text, nullable=False)
+    exit_status = Column(Integer, nullable=True)
+    executed_at = Column(DateTime, default=datetime.datetime.utcnow)
