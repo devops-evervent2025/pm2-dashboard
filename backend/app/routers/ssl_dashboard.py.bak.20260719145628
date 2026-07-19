@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.database import Base, get_db
 from app.auth import get_current_user, require_admin
-from app.models import User, Server, Client
+from app.models import User, Server
 from app.ssh_manager import run_command, run_restricted_command, SSHConnectionError
 
 router = APIRouter(prefix="/ssl", tags=["ssl"])
@@ -41,8 +41,6 @@ class SslDomainOut(BaseModel):
     id: int
     server_id: int
     server_name: Optional[str] = None
-    client_id: Optional[int] = None
-    client_name: Optional[str] = None
     domain: str
     cert_path: Optional[str] = None
     expires_at: Optional[datetime.datetime] = None
@@ -243,7 +241,7 @@ def _scan_server(server: Server) -> List[dict]:
     return results
 
 
-def _to_out(row: SslDomain, server_name: Optional[str], client_id: Optional[int] = None, client_name: Optional[str] = None) -> SslDomainOut:
+def _to_out(row: SslDomain, server_name: Optional[str]) -> SslDomainOut:
     days_remaining = None
     if row.expires_at:
         days_remaining = (row.expires_at - datetime.datetime.utcnow()).days
@@ -251,8 +249,6 @@ def _to_out(row: SslDomain, server_name: Optional[str], client_id: Optional[int]
         id=row.id,
         server_id=row.server_id,
         server_name=server_name,
-        client_id=client_id,
-        client_name=client_name,
         domain=row.domain,
         cert_path=row.cert_path,
         expires_at=row.expires_at,
@@ -277,16 +273,8 @@ def list_domains(db: Session = Depends(get_db), _admin: User = Depends(require_a
         .order_by(SslDomain.expires_at.is_(None), SslDomain.expires_at.asc())
         .all()
     )
-    servers = {s.id: s for s in db.query(Server).all()}
-    clients = {c.id: c.name for c in db.query(Client).all()}
-    out = []
-    for r in rows:
-        srv = servers.get(r.server_id)
-        srv_name = srv.name if srv else None
-        cli_id = srv.client_id if srv else None
-        cli_name = clients.get(cli_id) if cli_id else None
-        out.append(_to_out(r, srv_name, cli_id, cli_name))
-    return out
+    server_names = {s.id: s.name for s in db.query(Server).all()}
+    return [_to_out(r, server_names.get(r.server_id)) for r in rows]
 
 
 @router.post("/scan/{server_id}", response_model=SslScanResponse)
