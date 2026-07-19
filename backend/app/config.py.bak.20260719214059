@@ -43,15 +43,6 @@ class Settings(BaseSettings):
     # will never read outside this directory.
     REPOS_BASE_DIR: str = "/var/www"
 
-    # SMTP (for the email-notification feature) - leave SMTP_HOST empty
-    # to disable email sending entirely (in-app notifications still work).
-    SMTP_HOST: str = ""
-    SMTP_PORT: int = 587
-    SMTP_USERNAME: str = ""
-    SMTP_PASSWORD: str = ""
-    SMTP_FROM_EMAIL: str = ""
-    SMTP_USE_TLS: bool = True
-
     @property
     def SQLALCHEMY_DATABASE_URL(self) -> str:
         return (
