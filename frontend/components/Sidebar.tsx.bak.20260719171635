@@ -76,7 +76,8 @@ export default function Sidebar() {
             </svg>
           }
         />
-        <NavItem
+        {role === "admin" && (
+          <NavItem
             href="/dashboard/repos"
             label="Repos & Env"
             active={isReposActive}
@@ -86,7 +87,9 @@ export default function Sidebar() {
               </svg>
             }
           />
-        <NavItem
+        )}
+        {role === "admin" && (
+          <NavItem
             href="/dashboard/terminal"
             label="Server Terminal"
             active={isTerminalActive}
@@ -100,6 +103,7 @@ export default function Sidebar() {
               </svg>
             }
           />
+        )}
         {role === "admin" && (
           <NavItem
             href="/dashboard/ssl"

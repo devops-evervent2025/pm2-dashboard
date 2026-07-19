@@ -1,0 +1,166 @@
+"""
+Lightweight notification summary for the navbar bell icon - combines:
+  1. PM2 processes that are NOT online (errored, stopped, etc.) across
+     every server of every client.
+  2. SSL certificates expiring within 24 hours (from the already-scanned
+     ssl_domains_v2 table - no live re-check here, just reads the DB).
+
+The PM2 check is the expensive part (one SSH call per server), so the
+result is cached in-memory for CACHE_SECONDS and reused across requests -
+the navbar can poll this endpoint every 30-60s without hammering SSH.
+"""
+import datetime
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.auth import get_current_user
+from app.models import User, Server, Client
+from app.ssh_manager import list_pm2_processes, SSHConnectionError
+from app.routers.ssl_dashboard import SslDomain
+
+router = APIRouter(prefix="/notifications", tags=["notifications"])
+
+CACHE_SECONDS = 90
+SSL_ALERT_HOURS = 24
+
+
+class ProcessNotification(BaseModel):
+    client_id: int
+    client_name: str
+    server_id: int
+    server_name: str
+    process_name: str
+    status: str
+
+
+class SslNotification(BaseModel):
+    client_id: Optional[int] = None
+    client_name: Optional[str] = None
+    server_id: int
+    server_name: Optional[str] = None
+    domain: str
+    expires_at: Optional[datetime.datetime] = None
+    hours_remaining: Optional[float] = None
+
+
+class NotificationSummary(BaseModel):
+    total: int
+    process_alerts: List[ProcessNotification]
+    ssl_alerts: List[SslNotification]
+    generated_at: datetime.datetime
+    cached: bool
+
+
+_cache: dict = {"data": None, "at": 0.0}
+
+
+# Only these statuses count as a real crash/failure worth alerting on -
+# "stopped" is usually intentional (someone stopped it on purpose), so it
+# is excluded from notifications (it still shows on the Alerts page).
+ALERT_STATUSES = {"errored"}
+
+MAX_PARALLEL_SSH = 15
+
+
+def _check_one_server(server: Server, client_name: str) -> List[ProcessNotification]:
+    try:
+        processes = list_pm2_processes(server)
+    except SSHConnectionError:
+        return []  # unreachable servers are already surfaced on the Alerts page
+    out = []
+    for proc in processes:
+        status = proc.get("status", "unknown")
+        if status in ALERT_STATUSES:
+            out.append(ProcessNotification(
+                client_id=server.client_id,
+                client_name=client_name,
+                server_id=server.id,
+                server_name=server.name,
+                process_name=proc.get("name", "unknown"),
+                status=status,
+            ))
+    return out
+
+
+def _collect_process_alerts(db: Session) -> List[ProcessNotification]:
+    clients = {c.id: c.name for c in db.query(Client).all()}
+    servers = db.query(Server).all()
+    alerts: List[ProcessNotification] = []
+
+    # Check every server's SSH in parallel instead of one-by-one, so total
+    # time is roughly "slowest single server" rather than "sum of all of them".
+    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_SSH) as pool:
+        futures = {
+            pool.submit(_check_one_server, server, clients.get(server.client_id, "Unknown")): server
+            for server in servers
+        }
+        for future in as_completed(futures):
+            alerts.extend(future.result())
+
+    return alerts
+
+
+def _collect_ssl_alerts(db: Session) -> List[SslNotification]:
+    alerts: List[SslNotification] = []
+    now = datetime.datetime.utcnow()
+    cutoff = now + datetime.timedelta(hours=SSL_ALERT_HOURS)
+    servers = {s.id: s for s in db.query(Server).all()}
+    clients = {c.id: c.name for c in db.query(Client).all()}
+
+    rows = (
+        db.query(SslDomain)
+        .filter(SslDomain.expires_at.isnot(None), SslDomain.expires_at <= cutoff)
+        .all()
+    )
+    for row in rows:
+        srv = servers.get(row.server_id)
+        hours_remaining = (row.expires_at - now).total_seconds() / 3600
+        alerts.append(SslNotification(
+            client_id=srv.client_id if srv else None,
+            client_name=clients.get(srv.client_id) if srv else None,
+            server_id=row.server_id,
+            server_name=srv.name if srv else None,
+            domain=row.domain,
+            expires_at=row.expires_at,
+            hours_remaining=round(hours_remaining, 1),
+        ))
+    alerts.sort(key=lambda a: a.hours_remaining if a.hours_remaining is not None else 999999)
+    return alerts
+
+
+@router.get("/summary", response_model=NotificationSummary)
+def get_notification_summary(
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+    force: bool = False,
+):
+    now = time.time()
+    if not force and _cache["data"] is not None and (now - _cache["at"]) < CACHE_SECONDS:
+        cached_summary = _cache["data"]
+        return NotificationSummary(
+            total=cached_summary.total,
+            process_alerts=cached_summary.process_alerts,
+            ssl_alerts=cached_summary.ssl_alerts,
+            generated_at=cached_summary.generated_at,
+            cached=True,
+        )
+
+    process_alerts = _collect_process_alerts(db)
+    ssl_alerts = _collect_ssl_alerts(db)
+
+    summary = NotificationSummary(
+        total=len(process_alerts) + len(ssl_alerts),
+        process_alerts=process_alerts,
+        ssl_alerts=ssl_alerts,
+        generated_at=datetime.datetime.utcnow(),
+        cached=False,
+    )
+    _cache["data"] = summary
+    _cache["at"] = now
+    return summary
