@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import Base, engine
-from app.routers import auth, clients, servers, processes, logs, system, remote_repos, terminal, ssl_dashboard, notifications, activity_log
+from app.routers import auth, clients, servers, processes, logs, system, remote_repos, terminal, ssl_dashboard, activity_log
 
 from app.routers.ssl_dashboard import start_periodic_ssl_scan
 from app.init_db import bootstrap_admin
@@ -29,7 +29,6 @@ app.include_router(system.router)
 app.include_router(remote_repos.router)
 app.include_router(terminal.router)
 app.include_router(ssl_dashboard.router)
-app.include_router(notifications.router)
 app.include_router(activity_log.router)
 
 

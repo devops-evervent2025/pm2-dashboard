@@ -63,8 +63,7 @@ export default function ReposPage() {
   const [newLabel, setNewLabel] = useState("");
   const [addingScanPath, setAddingScanPath] = useState(false);
 
-  // सिर्फ एक group एक बार में खुला रहे (accordion), शुरुआत में कोई नहीं खुला
-  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const loadAll = useCallback(async () => {
     setLoadingRepos(true);
@@ -225,7 +224,7 @@ export default function ReposPage() {
   }
 
   function toggleGroup(label: string) {
-    setOpenGroup((prev) => (prev === label ? null : label));
+    setCollapsedGroups((prev) => ({ ...prev, [label]: !prev[label] }));
   }
 
   return (
@@ -331,7 +330,7 @@ export default function ReposPage() {
                     return acc;
                   }, {})
                 ).map(([label, repos]) => {
-                  const isCollapsed = openGroup !== label;
+                  const isCollapsed = collapsedGroups[label];
                   return (
                     <div key={label}>
                       <button

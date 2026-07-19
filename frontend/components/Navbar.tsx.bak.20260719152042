@@ -191,7 +191,7 @@ export default function Navbar({ crumbs }: { crumbs?: { label: string; href?: st
               Manage Users
             </Link>
           )}
-          {role === "admin" && <NotificationBell />}
+          {role && <NotificationBell />}
           {role && <span className={`badge ${ROLE_STYLES[role]}`}>{role}</span>}
           <span className="text-sm text-slate-600">{username}</span>
           <button onClick={logout} className="btn-secondary text-xs">

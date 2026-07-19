@@ -93,6 +93,7 @@ class SecretRevealAudit(Base):
     env_file_path = Column(String(500), nullable=False)
     key_name = Column(String(255), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    server_id = Column(Integer, ForeignKey("servers.id"), nullable=True)
     revealed_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
