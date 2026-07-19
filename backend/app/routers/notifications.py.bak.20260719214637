@@ -22,8 +22,7 @@ from app.database import get_db
 from app.auth import get_current_user
 from app.models import User, Server, Client
 from app.auth import require_admin
-from app.notification_models import NotificationRecipient, NotificationSentLog
-from app.email_utils import send_email
+from app.notification_models import NotificationRecipient
 from app.ssh_manager import list_pm2_processes, SSHConnectionError
 from app.routers.ssl_dashboard import SslDomain
 
@@ -192,52 +191,6 @@ def delete_recipient(
     return {"detail": "Recipient removed"}
 
 
-def _send_new_alert_emails(db: Session, process_alerts: List[ProcessNotification], ssl_alerts: List[SslNotification]):
-    """
-    Sends ONE email per genuinely NEW alert (never seen before in
-    notification_sent_log), then records it so it's never re-emailed
-    while it remains active. If the alert later disappears (resolved)
-    and then reappears, it's treated as new again (log entry only
-    exists while the alert was first seen, we don't clear it on
-    resolution - a resurfaced alert genuinely deserves a fresh email).
-    """
-    recipients = [r.email for r in db.query(NotificationRecipient).all()]
-    if not recipients:
-        return
-
-    for a in process_alerts:
-        key = f"process:{a.server_id}:{a.process_name}:{a.status}"
-        if db.query(NotificationSentLog).filter(NotificationSentLog.alert_key == key).first():
-            continue
-        subject = f"[PM2 Dashboard] {a.process_name} is {a.status}"
-        body = (
-            f"<p><strong>{a.process_name}</strong> on <strong>{a.server_name}</strong> "
-            f"({a.client_name}) is currently <strong>{a.status}</strong>.</p>"
-            f"<p>Check the Alerts page in PM2 Dashboard for details.</p>"
-        )
-        if send_email(recipients, subject, body):
-            db.add(NotificationSentLog(alert_key=key, alert_type="process"))
-            db.commit()
-
-    for a in ssl_alerts:
-        key = f"ssl:{a.server_id}:{a.domain}"
-        if db.query(NotificationSentLog).filter(NotificationSentLog.alert_key == key).first():
-            continue
-        hours_txt = (
-            "already expired" if (a.hours_remaining or 0) < 0
-            else f"expires in {a.hours_remaining:.1f} hours"
-        )
-        subject = f"[PM2 Dashboard] SSL certificate expiring soon: {a.domain}"
-        body = (
-            f"<p>The SSL certificate for <strong>{a.domain}</strong> "
-            f"({a.client_name or 'Unknown client'}) {hours_txt}.</p>"
-            f"<p>Check the SSL Certificates page in PM2 Dashboard for details.</p>"
-        )
-        if send_email(recipients, subject, body):
-            db.add(NotificationSentLog(alert_key=key, alert_type="ssl"))
-            db.commit()
-
-
 @router.get("/summary", response_model=NotificationSummary)
 def get_notification_summary(
     db: Session = Depends(get_db),
@@ -257,12 +210,6 @@ def get_notification_summary(
 
     process_alerts = _collect_process_alerts(db)
     ssl_alerts = _collect_ssl_alerts(db)
-
-    try:
-        _send_new_alert_emails(db, process_alerts, ssl_alerts)
-    except Exception as exc:
-        import logging
-        logging.getLogger("notifications").warning(f"[email] alert email dispatch failed: {exc}")
 
     summary = NotificationSummary(
         total=len(process_alerts) + len(ssl_alerts),

@@ -3,7 +3,6 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
-import ThemeToggle from "@/components/ThemeToggle";
 
 const ROLE_STYLES: Record<string, string> = {
   admin: "bg-purple-100 text-purple-700",
@@ -96,16 +95,16 @@ function RecipientsModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/30 z-30 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-white dark:bg-slate-900 rounded-lg shadow-xl w-full max-w-md p-5"
+        className="bg-white rounded-lg shadow-xl w-full max-w-md p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100">Email notification recipients</h3>
+          <h3 className="text-base font-semibold text-slate-800">Email notification recipients</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg leading-none">
             &times;
           </button>
         </div>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+        <p className="text-xs text-slate-500 mb-4">
           Everyone in this list gets an email as soon as a new PM2 crash or SSL certificate
           expiring soon (within 24h) is detected.
         </p>
@@ -117,7 +116,7 @@ function RecipientsModal({ onClose }: { onClose: () => void }) {
             placeholder="someone@example.com"
             value={newEmail}
             onChange={(e) => setNewEmail(e.target.value)}
-            className="flex-1 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 text-sm"
+            className="flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm"
           />
           <button type="submit" disabled={saving} className="btn-primary text-sm px-3">
             {saving ? "Adding…" : "Add"}
@@ -133,8 +132,8 @@ function RecipientsModal({ onClose }: { onClose: () => void }) {
 
         <div className="space-y-1.5 max-h-60 overflow-y-auto">
           {recipients.map((r) => (
-            <div key={r.id} className="flex items-center justify-between px-2 py-1.5 rounded-md bg-slate-50 dark:bg-slate-800">
-              <span className="text-sm text-slate-700 dark:text-slate-200">{r.email}</span>
+            <div key={r.id} className="flex items-center justify-between px-2 py-1.5 rounded-md bg-slate-50">
+              <span className="text-sm text-slate-700">{r.email}</span>
               <button
                 onClick={() => removeRecipient(r.id)}
                 className="text-xs text-red-500 hover:text-red-700"
@@ -186,7 +185,7 @@ function NotificationBell() {
     <div className="relative" ref={containerRef}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300"
+        className="relative p-2 rounded-lg hover:bg-slate-100 text-slate-600"
         aria-label="Notifications"
       >
         <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
@@ -200,10 +199,10 @@ function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-96 max-h-[28rem] overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-20">
-          <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+        <div className="absolute right-0 mt-2 w-96 max-h-[28rem] overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg z-20">
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Notifications</p>
+              <p className="text-sm font-semibold text-slate-800">Notifications</p>
               <p className="text-xs text-slate-400">
                 {total === 0 ? "All clear" : `${total} item${total === 1 ? "" : "s"} need attention`}
               </p>
@@ -213,7 +212,7 @@ function NotificationBell() {
                 setShowRecipients(true);
                 setOpen(false);
               }}
-              className="text-xs text-brand-600 dark:text-brand-400 hover:text-brand-800 shrink-0"
+              className="text-xs text-brand-600 hover:text-brand-800 shrink-0"
             >
               Manage recipients
             </button>
@@ -289,10 +288,10 @@ function NotificationBell() {
 export default function Navbar({ crumbs }: { crumbs?: { label: string; href?: string }[] }) {
   const { username, role, logout } = useAuth();
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-10 dark:bg-slate-900 dark:border-slate-700">
+    <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3 text-sm">
-          <Link href="/dashboard" className="font-semibold text-slate-800 dark:text-slate-100">
+          <Link href="/dashboard" className="font-semibold text-slate-800">
             PM2 Dashboard
           </Link>
           {crumbs?.map((c, i) => (
@@ -303,7 +302,7 @@ export default function Navbar({ crumbs }: { crumbs?: { label: string; href?: st
                   {c.label}
                 </Link>
               ) : (
-                <span className="text-slate-700 font-medium dark:text-slate-200">{c.label}</span>
+                <span className="text-slate-700 font-medium">{c.label}</span>
               )}
             </span>
           ))}
@@ -315,9 +314,8 @@ export default function Navbar({ crumbs }: { crumbs?: { label: string; href?: st
             </Link>
           )}
           {role === "admin" && <NotificationBell />}
-          <ThemeToggle />
           {role && <span className={`badge ${ROLE_STYLES[role]}`}>{role}</span>}
-          <span className="text-sm text-slate-600 dark:text-slate-300">{username}</span>
+          <span className="text-sm text-slate-600">{username}</span>
           <button onClick={logout} className="btn-secondary text-xs">
             Logout
           </button>

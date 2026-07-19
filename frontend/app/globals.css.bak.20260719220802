@@ -86,22 +86,3 @@ body {
 .dark .hover\:text-slate-800:hover {
   @apply text-slate-100;
 }
-
-/* Form elements (input/textarea/select) don't inherit bg-white/text-slate-800
-   classes directly - they use the browser's native white background by
-   default, so dark mode needs to target them explicitly. */
-.dark input,
-.dark textarea,
-.dark select {
-  background-color: #1e293b; /* slate-800 */
-  color: #e2e8f0; /* slate-200 */
-  border-color: #475569; /* slate-600 */
-}
-.dark input::placeholder,
-.dark textarea::placeholder {
-  color: #64748b; /* slate-500 */
-}
-.dark select option {
-  background-color: #1e293b;
-  color: #e2e8f0;
-}
