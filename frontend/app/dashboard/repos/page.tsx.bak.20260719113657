@@ -53,6 +53,7 @@ export default function ReposPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [revealed, setRevealed] = useState<Record<string, string>>({});
+  const [revealing, setRevealing] = useState<string | null>(null);
   const [copiedFile, setCopiedFile] = useState<string | null>(null);
 
   const [scanPaths, setScanPaths] = useState<ScanPath[]>([]);
@@ -141,34 +142,34 @@ export default function ReposPage() {
       const res = await api.get<EnvFileItem[]>(envUrlFor(repo, ""));
       setEnvFiles(res.data);
       setError(null);
-
-      // हर sensitive key को यहीं अपने आप reveal कर लेते हैं, ताकि आगे कोई
-      // reveal/hide बटन ना चाहिए हो - असली value सीधे दिख जाए। Audit log
-      // में यह अब भी record होगा (backend का reveal endpoint ही call हो
-      // रहा है), बस UI में manual क्लिक की ज़रूरत नहीं रही।
-      const revealTasks: Promise<void>[] = [];
-      for (const file of res.data) {
-        for (const k of file.keys) {
-          if (!k.is_sensitive) continue;
-          const mapKey = `${file.file_path}::${k.key}`;
-          revealTasks.push(
-            api
-              .post(envUrlFor(repo, "/reveal"), { file_path: file.file_path, key: k.key })
-              .then((r) => {
-                setRevealed((prev) => ({ ...prev, [mapKey]: r.data.value }));
-              })
-              .catch(() => {
-                setRevealed((prev) => ({ ...prev, [mapKey]: "(could not reveal)" }));
-              })
-          );
-        }
-      }
-      await Promise.all(revealTasks);
     } catch (err: any) {
       setError(err?.response?.data?.detail || "Failed to load .env files for this repo");
     } finally {
       setLoadingEnv(false);
     }
+  }
+
+  async function reveal(filePath: string, key: string) {
+    if (!selected) return;
+    const mapKey = `${filePath}::${key}`;
+    setRevealing(mapKey);
+    try {
+      const res = await api.post(envUrlFor(selected, "/reveal"), { file_path: filePath, key });
+      setRevealed((prev) => ({ ...prev, [mapKey]: res.data.value }));
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Failed to reveal value");
+    } finally {
+      setRevealing(null);
+    }
+  }
+
+  function hide(filePath: string, key: string) {
+    const mapKey = `${filePath}::${key}`;
+    setRevealed((prev) => {
+      const next = { ...prev };
+      delete next[mapKey];
+      return next;
+    });
   }
 
   function fileAsText(file: EnvFileItem): string {
@@ -335,11 +336,11 @@ export default function ReposPage() {
                     <div key={label}>
                       <button
                         onClick={() => toggleGroup(label)}
-                        className="w-full flex items-center gap-2 px-4 py-2.5 bg-slate-50 text-left text-xs font-medium text-slate-500 tracking-wide hover:bg-slate-100"
+                        className="w-full flex items-center gap-2 px-4 py-2.5 bg-slate-50 text-left text-xs font-medium text-slate-500 uppercase tracking-wide hover:bg-slate-100"
                       >
                         <ChevronIcon open={!isCollapsed} />
                         {label}
-                        <span className="ml-auto font-normal text-slate-400">
+                        <span className="ml-auto normal-case font-normal text-slate-400">
                           {repos.length}
                         </span>
                       </button>
@@ -398,14 +399,38 @@ export default function ReposPage() {
                   <div className="bg-slate-900 text-slate-100 font-mono text-xs p-4 overflow-x-auto">
                     {file.keys.map((k) => {
                       const mapKey = `${file.file_path}::${k.key}`;
-                      const value = k.is_sensitive ? revealed[mapKey] : k.value;
+                      const isRevealed = mapKey in revealed;
+                      const isBusy = revealing === mapKey;
                       return (
                         <div key={k.key} className="whitespace-pre flex items-center gap-2 py-0.5">
                           <span className="text-sky-400">{k.key}</span>
                           <span className="text-slate-500">=</span>
-                          <span className={k.is_sensitive ? "text-amber-300" : "text-emerald-300"}>
-                            {value || <span className="text-slate-500 italic">(empty)</span>}
-                          </span>
+                          {!k.is_sensitive ? (
+                            <span className="text-emerald-300">
+                              {k.value || <span className="text-slate-500 italic">(empty)</span>}
+                            </span>
+                          ) : isRevealed ? (
+                            <>
+                              <span className="text-amber-300">{revealed[mapKey]}</span>
+                              <button
+                                onClick={() => hide(file.file_path, k.key)}
+                                className="text-slate-500 hover:text-slate-300 not-italic"
+                              >
+                                (hide)
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-slate-500 tracking-widest">••••••••</span>
+                              <button
+                                disabled={isBusy}
+                                onClick={() => reveal(file.file_path, k.key)}
+                                className="text-brand-400 hover:text-brand-300"
+                              >
+                                {isBusy ? "…" : "[reveal]"}
+                              </button>
+                            </>
+                          )}
                         </div>
                       );
                     })}

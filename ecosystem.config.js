@@ -37,7 +37,7 @@ const FRONTEND_PORT = frontendEnv.PORT || "3000";
 module.exports = {
   apps: [
     {
-      name: "pm2-dashboard-backend",
+      name: "pm2-dashboard-dev-backend",
       cwd: "./backend",
       script: "venv/bin/uvicorn",
       args: `app.main:app --host 0.0.0.0 --port ${BACKEND_PORT}`,
@@ -49,7 +49,7 @@ module.exports = {
       restart_delay: 3000,
     },
     {
-      name: "pm2-dashboard-frontend",
+      name: "pm2-dashboard-dev-frontend",
       cwd: "./frontend",
       script: "npm",
       args: "run start",

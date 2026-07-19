@@ -96,6 +96,25 @@ def run_command(server: Server, command: str, timeout: int = 20) -> str:
         client.close()
 
 
+def run_restricted_command(server: Server, command: str, timeout: int = 30) -> dict:
+    """
+    Like run_command, but returns stdout/stderr/exit_status separately
+    instead of raising on stderr output - used by the restricted curl-only
+    terminal feature. The caller is responsible for validating `command`
+    before calling this.
+    """
+    client = _connect(server)
+    try:
+        wrapped = f"bash -lc {shlex.quote(command)}"
+        stdin, stdout, stderr = client.exec_command(wrapped, timeout=timeout)
+        out = stdout.read().decode(errors="ignore")
+        err = stderr.read().decode(errors="ignore")
+        exit_status = stdout.channel.recv_exit_status()
+        return {"stdout": out, "stderr": err, "exit_status": exit_status}
+    finally:
+        client.close()
+
+
 def check_online(server: Server) -> bool:
     try:
         run_command(server, "echo ok", timeout=8)
