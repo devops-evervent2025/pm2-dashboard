@@ -7,7 +7,6 @@ from app import notification_models  # noqa: F401
 from app.routers import auth, clients, servers, processes, logs, system, remote_repos, terminal, ssl_dashboard, notifications, activity_log
 
 from app.routers.ssl_dashboard import start_periodic_ssl_scan
-from app.routers.notifications import start_daily_digest_scheduler
 from app.init_db import bootstrap_admin
 
 settings = get_settings()
@@ -41,7 +40,6 @@ def on_startup():
     Base.metadata.create_all(bind=engine)
     bootstrap_admin()
     start_periodic_ssl_scan()
-    start_daily_digest_scheduler()
 
 
 @app.get("/health")

@@ -44,12 +44,42 @@ def decode_token(token: str) -> dict:
         )
 
 
+MAX_FAILED_ATTEMPTS = 3
+LOCKOUT_DURATION = datetime.timedelta(hours=1)
+
+
+class AccountLockedError(Exception):
+    def __init__(self, retry_after_seconds: int):
+        self.retry_after_seconds = retry_after_seconds
+        super().__init__(f"Account locked for {retry_after_seconds} more seconds")
+
+
 def authenticate_user(db: Session, username: str, password: str) -> Optional[User]:
     user = db.query(User).filter(User.username == username).first()
     if not user or not user.is_active:
         return None
+
+    now = datetime.datetime.utcnow()
+
+    if user.locked_until and user.locked_until > now:
+        remaining = int((user.locked_until - now).total_seconds())
+        raise AccountLockedError(remaining)
+
     if not verify_password(password, user.hashed_password):
+        user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+        if user.failed_login_attempts >= MAX_FAILED_ATTEMPTS:
+            user.locked_until = now + LOCKOUT_DURATION
+            user.failed_login_attempts = 0
+            db.commit()
+            raise AccountLockedError(int(LOCKOUT_DURATION.total_seconds()))
+        db.commit()
         return None
+
+    if user.failed_login_attempts or user.locked_until:
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        db.commit()
+
     return user
 
 

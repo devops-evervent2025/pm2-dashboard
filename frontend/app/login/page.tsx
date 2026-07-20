@@ -1,7 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth";
+
+function formatCountdown(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
+}
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -9,6 +15,23 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [lockedSeconds, setLockedSeconds] = useState<number | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (lockedSeconds === null) return;
+    if (lockedSeconds <= 0) {
+      setLockedSeconds(null);
+      setError(null);
+      return;
+    }
+    intervalRef.current = setInterval(() => {
+      setLockedSeconds((prev) => (prev !== null ? prev - 1 : null));
+    }, 1000);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [lockedSeconds]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -17,11 +40,19 @@ export default function LoginPage() {
     try {
       await login(username, password);
     } catch (err: any) {
-      setError(err?.response?.data?.detail || "Login failed");
+      const detail = err?.response?.data?.detail;
+      if (detail && typeof detail === "object" && "retry_after_seconds" in detail) {
+        setLockedSeconds(detail.retry_after_seconds);
+        setError(detail.message || "Account locked due to too many failed attempts.");
+      } else {
+        setError(typeof detail === "string" ? detail : "Login failed");
+      }
     } finally {
       setLoading(false);
     }
   }
+
+  const isLocked = lockedSeconds !== null && lockedSeconds > 0;
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
@@ -36,6 +67,7 @@ export default function LoginPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
+              disabled={isLocked}
             />
           </div>
           <div>
@@ -46,11 +78,25 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              disabled={isLocked}
             />
           </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          <button type="submit" disabled={loading} className="btn-primary w-full">
-            {loading ? "Signing in…" : "Sign in"}
+          {error && (
+            <div className="text-sm text-red-600">
+              <p>{error}</p>
+              {isLocked && (
+                <p className="mt-1 font-medium">
+                  Try again in {formatCountdown(lockedSeconds as number)}
+                </p>
+              )}
+            </div>
+          )}
+          <button type="submit" disabled={loading || isLocked} className="btn-primary w-full">
+            {isLocked
+              ? `Locked - ${formatCountdown(lockedSeconds as number)}`
+              : loading
+              ? "Signing in…"
+              : "Sign in"}
           </button>
         </form>
       </div>
