@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.auth import authenticate_user, create_access_token, get_current_user, require_admin, hash_password
+from app.auth import authenticate_user, create_access_token, get_current_user, require_admin, hash_password, AccountLockedError
 from app.schemas import Token, UserOut, UserCreate, UserUpdate
 from app.models import User
 
@@ -12,7 +12,18 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/login", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = authenticate_user(db, form_data.username, form_data.password)
+    try:
+        user = authenticate_user(db, form_data.username, form_data.password)
+    except AccountLockedError as exc:
+        minutes = exc.retry_after_seconds // 60
+        seconds = exc.retry_after_seconds % 60
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "message": f"Too many failed attempts. Account locked for {minutes}m {seconds}s.",
+                "retry_after_seconds": exc.retry_after_seconds,
+            },
+        )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
