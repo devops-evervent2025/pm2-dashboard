@@ -65,7 +65,6 @@ export default function ReposPage() {
 
   // सिर्फ एक group एक बार में खुला रहे (accordion), शुरुआत में कोई नहीं खुला
   const [openGroup, setOpenGroup] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
 
   const loadAll = useCallback(async () => {
     setLoadingRepos(true);
@@ -317,16 +316,6 @@ export default function ReposPage() {
 
         {error && <p className="text-red-600 mb-4">{error}</p>}
 
-        <div className="mb-4">
-          <input
-            type="text"
-            placeholder="Search by client/server name or repo name…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="input-field text-sm w-full max-w-md"
-          />
-        </div>
-
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="md:col-span-1">
             <div className="card divide-y divide-slate-100 overflow-hidden">
@@ -335,35 +324,15 @@ export default function ReposPage() {
                 <p className="p-4 text-sm text-slate-500">No repos found.</p>
               )}
               {!loadingRepos &&
-                (() => {
-                  const q = searchQuery.trim().toLowerCase();
-                  const filtered = q
-                    ? unifiedRepos.filter(
-                        (r) =>
-                          groupLabel(r.source).toLowerCase().includes(q) ||
-                          r.name.toLowerCase().includes(q)
-                      )
-                    : unifiedRepos;
-
-                  const grouped = Object.entries(
-                    filtered.reduce<Record<string, UnifiedRepo[]>>((acc, r) => {
-                      const label = groupLabel(r.source);
-                      (acc[label] = acc[label] || []).push(r);
-                      return acc;
-                    }, {})
-                  );
-
-                  if (q && grouped.length === 0) {
-                    return (
-                      <p className="p-4 text-sm text-slate-500">
-                        No clients, servers, or repos match &quot;{searchQuery}&quot;.
-                      </p>
-                    );
-                  }
-
-                  return grouped.map(([label, repos]) => {
-                    const isCollapsed = q ? false : openGroup !== label;
-                    return (
+                Object.entries(
+                  unifiedRepos.reduce<Record<string, UnifiedRepo[]>>((acc, r) => {
+                    const label = groupLabel(r.source);
+                    (acc[label] = acc[label] || []).push(r);
+                    return acc;
+                  }, {})
+                ).map(([label, repos]) => {
+                  const isCollapsed = openGroup !== label;
+                  return (
                     <div key={label}>
                       <button
                         onClick={() => toggleGroup(label)}
@@ -390,9 +359,8 @@ export default function ReposPage() {
                           </button>
                         ))}
                     </div>
-                    );
-                  });
-                })()}
+                  );
+                })}
             </div>
           </div>
 
