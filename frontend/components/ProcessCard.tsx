@@ -45,8 +45,12 @@ export default function ProcessCard({
 
   async function runAction(action: "restart" | "stop" | "start") {
     setBusy(true);
+
     try {
-      await api.post(`/servers/${serverId}/processes/${process.name}/action`, { action });
+      await api.post(
+        `/servers/${serverId}/processes/${process.name}/action`,
+        { action }
+      );
       onAction();
     } catch (err) {
       console.error(err);
@@ -56,13 +60,27 @@ export default function ProcessCard({
   }
 
   return (
-    <div className="card p-5 flex flex-col gap-3">
+    <div
+      data-aos="fade-up"
+      data-aos-duration="700"
+      data-aos-once="true"
+      className="card p-5 flex flex-col gap-3"
+    >
       <div className="flex items-center justify-between">
-        <h4 className="font-semibold text-slate-800">{process.name}</h4>
-        <span className={`badge ${STATUS_STYLES[process.status] || "bg-slate-100 text-slate-600"}`}>
+        <h4 className="font-semibold text-slate-800">
+          {process.name}
+        </h4>
+
+        <span
+          className={`badge ${
+            STATUS_STYLES[process.status] ||
+            "bg-slate-100 text-slate-600"
+          }`}
+        >
           {process.status}
         </span>
       </div>
+
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-500">
         <span>PID: {process.pid ?? "-"}</span>
         <span>Restarts: {process.restarts ?? 0}</span>
@@ -71,13 +89,17 @@ export default function ProcessCard({
         <span>Uptime: {formatUptime(process.uptime)}</span>
         <span>Mode: {process.exec_mode ?? "-"}</span>
       </div>
+
       <div className="flex items-center gap-2 pt-1">
         <Link
-          href={`/dashboard/${clientId}/${serverId}/${encodeURIComponent(process.name)}/logs`}
+          href={`/dashboard/${clientId}/${serverId}/${encodeURIComponent(
+            process.name
+          )}/logs`}
           className="btn-secondary text-xs"
         >
           View logs
         </Link>
+
         {canControl && (
           <>
             <button
@@ -87,12 +109,21 @@ export default function ProcessCard({
             >
               Restart
             </button>
+
             {process.status === "online" ? (
-              <button disabled={busy} onClick={() => runAction("stop")} className="btn-secondary text-xs">
+              <button
+                disabled={busy}
+                onClick={() => runAction("stop")}
+                className="btn-secondary text-xs"
+              >
                 Stop
               </button>
             ) : (
-              <button disabled={busy} onClick={() => runAction("start")} className="btn-secondary text-xs">
+              <button
+                disabled={busy}
+                onClick={() => runAction("start")}
+                className="btn-secondary text-xs"
+              >
                 Start
               </button>
             )}
