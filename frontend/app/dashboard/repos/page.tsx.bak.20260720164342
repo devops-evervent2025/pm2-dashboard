@@ -58,7 +58,6 @@ export default function ReposPage() {
   const [scanPaths, setScanPaths] = useState<ScanPath[]>([]);
   const [servers, setServers] = useState<ServerItem[]>([]);
   const [showManage, setShowManage] = useState(false);
-  const [scanningAll, setScanningAll] = useState(false);
   const [newServerId, setNewServerId] = useState<number | "">("");
   const [newBasePath, setNewBasePath] = useState("");
   const [newLabel, setNewLabel] = useState("");
@@ -220,18 +219,6 @@ export default function ReposPage() {
     await loadAll();
   }
 
-  async function scanAllRepos() {
-    setScanningAll(true);
-    try {
-      await api.post("/remote-repos/scan-all");
-      await loadAll();
-    } catch (err: any) {
-      alert(err?.response?.data?.detail || "Scan failed");
-    } finally {
-      setScanningAll(false);
-    }
-  }
-
   function groupLabel(source: UnifiedRepo["source"]): string {
     if (source === "local") return "Local (this server)";
     if (source.label) return `${source.serverName} · ${source.label}`;
@@ -257,18 +244,9 @@ export default function ReposPage() {
             </p>
           </div>
           {role === "admin" && (
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                className="btn-primary text-xs whitespace-nowrap"
-                onClick={scanAllRepos}
-                disabled={scanningAll}
-              >
-                {scanningAll ? "Scanning…" : "Scan all repos now"}
-              </button>
-              <button className="btn-secondary text-xs whitespace-nowrap" onClick={() => setShowManage((v) => !v)}>
-                {showManage ? "Hide scan paths" : "Manage remote scan paths"}
-              </button>
-            </div>
+            <button className="btn-secondary text-xs whitespace-nowrap" onClick={() => setShowManage((v) => !v)}>
+              {showManage ? "Hide scan paths" : "Manage remote scan paths"}
+            </button>
           )}
         </div>
 
