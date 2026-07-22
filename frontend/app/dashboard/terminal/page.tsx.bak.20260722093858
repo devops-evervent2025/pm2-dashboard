@@ -4,8 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
-import { api, ServerItem, PM2ProcessItem } from "@/lib/api";
-import LogsTerminal from "@/components/LogsTerminal";
+import { api, ServerItem } from "@/lib/api";
 
 interface HistoryEntry {
   id: string;
@@ -46,11 +45,6 @@ export default function ServerTerminalPage() {
     }
   }, [role, isLoading, router]);
 
-  const [processes, setProcesses] = useState<PM2ProcessItem[]>([]);
-  const [selectedProcess, setSelectedProcess] = useState<string>("");
-  const [loadingProcesses, setLoadingProcesses] = useState(false);
-  const [processError, setProcessError] = useState("");
-
   const loadServers = useCallback(async () => {
     try {
       const res = await api.get<ServerItem[]>("/servers");
@@ -63,19 +57,6 @@ export default function ServerTerminalPage() {
   useEffect(() => {
     if (role) loadServers();
   }, [role, loadServers]);
-
-  useEffect(() => {
-    setSelectedProcess("");
-    setProcesses([]);
-    setProcessError("");
-    if (!serverId) return;
-    setLoadingProcesses(true);
-    api
-      .get<PM2ProcessItem[]>(`/servers/${serverId}/processes`)
-      .then((res) => setProcesses(res.data))
-      .catch(() => setProcessError("Could not load processes for this server."))
-      .finally(() => setLoadingProcesses(false));
-  }, [serverId]);
 
   const runCommand = async () => {
     if (!serverId || !command.trim() || running) return;
@@ -119,7 +100,7 @@ export default function ServerTerminalPage() {
   return (
     <div className="min-h-screen">
       <Navbar />
-      <main className="max-w-[100rem] mx-auto px-4 py-8">
+      <main className="max-w-6xl mx-auto px-4 py-8">
         <h1 className="text-2xl font-semibold text-slate-800 mb-2">Server Terminal</h1>
         <p className="text-sm text-slate-500 mb-6">
           Run curl commands against a managed server over its existing SSH connection.
@@ -127,9 +108,6 @@ export default function ServerTerminalPage() {
           copied from a browser's "Copy as cURL" (those carry session cookies).
           Every command run here is logged.
         </p>
-
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
-        <div>
 
         <div className="card p-6 mb-6">
           <label className="block text-sm font-medium text-slate-700 mb-1">Server</label>
@@ -225,42 +203,6 @@ export default function ServerTerminalPage() {
             </div>
             );
           })()}
-        </div>
-        </div>
-
-        <div>
-          <div className="card p-6 mb-6">
-            <label className="block text-sm font-medium text-slate-700 mb-1">Process (live logs)</label>
-            <select
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
-              value={selectedProcess}
-              onChange={(e) => setSelectedProcess(e.target.value)}
-              disabled={!serverId || loadingProcesses}
-            >
-              <option value="">
-                {!serverId
-                  ? "Select a server first…"
-                  : loadingProcesses
-                  ? "Loading processes…"
-                  : "Select a process…"}
-              </option>
-              {processes.map((p) => (
-                <option key={p.pm_id} value={p.name}>
-                  {p.name} ({p.status})
-                </option>
-              ))}
-            </select>
-            {processError && <p className="text-xs text-red-600 mt-2">{processError}</p>}
-          </div>
-
-          {serverId && selectedProcess ? (
-            <LogsTerminal serverId={Number(serverId)} processName={selectedProcess} />
-          ) : (
-            <div className="card p-10 text-center text-slate-400 text-sm">
-              Select a server and a process above to stream its live logs here.
-            </div>
-          )}
-        </div>
         </div>
       </main>
     </div>
