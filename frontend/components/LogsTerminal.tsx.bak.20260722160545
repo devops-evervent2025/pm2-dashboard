@@ -15,7 +15,6 @@ export default function LogsTerminal({
   const [lines, setLines] = useState<string[]>([]);
   const [status, setStatus] = useState<"connecting" | "open" | "closed" | "error">("connecting");
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isAtBottom, setIsAtBottom] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const router = useRouter();
@@ -59,27 +58,9 @@ export default function LogsTerminal({
     };
   }, [serverId, processName]);
 
-  // Only auto-scroll to the newest lines if the user is already near the
-  // bottom - if they've scrolled up to read earlier output, new incoming
-  // lines must NOT yank them back down.
   useEffect(() => {
-    if (!isAtBottom) return;
     containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight });
-  }, [lines, isAtBottom]);
-
-  const BOTTOM_THRESHOLD_PX = 60;
-
-  function handleScroll() {
-    const el = containerRef.current;
-    if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    setIsAtBottom(distanceFromBottom <= BOTTOM_THRESHOLD_PX);
-  }
-
-  function jumpToLatest() {
-    setIsAtBottom(true);
-    containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" });
-  }
+  }, [lines]);
 
   // Esc key exits fullscreen, same as most fullscreen UIs
   useEffect(() => {
@@ -156,30 +137,18 @@ export default function LogsTerminal({
           </button>
         </div>
       </div>
-      <div className="relative flex-1 min-h-0">
-        <div
-          ref={containerRef}
-          onScroll={handleScroll}
-          className="h-full overflow-y-auto bg-slate-900 text-slate-100 font-mono text-xs p-4 space-y-0.5"
-        >
-          {lines.length === 0 && (
-            <p className="text-slate-500">Waiting for log output…</p>
-          )}
-          {lines.map((line, i) => (
-            <div key={i} className="whitespace-pre-wrap break-all">
-              {line}
-            </div>
-          ))}
-        </div>
-        {!isAtBottom && (
-          <button
-            type="button"
-            onClick={jumpToLatest}
-            className="absolute bottom-3 right-3 px-3 py-1.5 rounded-full bg-slate-700 hover:bg-slate-600 text-slate-100 text-xs font-medium shadow-lg flex items-center gap-1"
-          >
-            ↓ Jump to latest
-          </button>
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-y-auto bg-slate-900 text-slate-100 font-mono text-xs p-4 space-y-0.5"
+      >
+        {lines.length === 0 && (
+          <p className="text-slate-500">Waiting for log output…</p>
         )}
+        {lines.map((line, i) => (
+          <div key={i} className="whitespace-pre-wrap break-all">
+            {line}
+          </div>
+        ))}
       </div>
     </div>
   );

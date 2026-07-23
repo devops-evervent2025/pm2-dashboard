@@ -21,55 +21,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
-  // Auto-logout if the app was closed/inactive for this long, even
-  // though the JWT itself might still technically be valid for longer.
-  const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
-
-  function markActive() {
-    localStorage.setItem("pm2dash_last_active", String(Date.now()));
-  }
-
   useEffect(() => {
     const storedUser = localStorage.getItem("pm2dash_username");
     const storedRole = localStorage.getItem("pm2dash_role") as Role | null;
-    const lastActiveRaw = localStorage.getItem("pm2dash_last_active");
-
     if (storedUser && storedRole) {
-      const lastActive = lastActiveRaw ? Number(lastActiveRaw) : 0;
-      const idleFor = Date.now() - lastActive;
-
-      if (lastActiveRaw && idleFor > IDLE_TIMEOUT_MS) {
-        // Was closed/inactive too long - require a fresh login, same as
-        // a normal logout, but without redirecting (we're likely already
-        // on /login or about to render the app shell).
-        localStorage.removeItem("pm2dash_token");
-        localStorage.removeItem("pm2dash_role");
-        localStorage.removeItem("pm2dash_username");
-        localStorage.removeItem("pm2dash_last_active");
-      } else {
-        setUsername(storedUser);
-        setRole(storedRole);
-        markActive();
-      }
+      setUsername(storedUser);
+      setRole(storedRole);
     }
     setIsLoading(false);
   }, []);
-
-  // Keep the "last active" timestamp fresh while the app is actually open
-  // and visible - minimizing/switching tabs briefly must NOT count as
-  // being closed, only genuinely leaving it untouched for the full hour.
-  useEffect(() => {
-    if (!username) return;
-    const interval = setInterval(markActive, 30 * 1000);
-    function onVisibility() {
-      if (document.visibilityState === "visible") markActive();
-    }
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [username]);
 
   // Step 1: verifies username+password and triggers the emailed OTP.
   // Does NOT set auth state yet - that only happens after verifyOtp succeeds.
@@ -91,7 +51,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("pm2dash_token", access_token);
     localStorage.setItem("pm2dash_role", userRole);
     localStorage.setItem("pm2dash_username", uname);
-    markActive();
     setUsername(uname);
     setRole(userRole);
     router.push("/dashboard");
@@ -101,7 +60,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem("pm2dash_token");
     localStorage.removeItem("pm2dash_role");
     localStorage.removeItem("pm2dash_username");
-    localStorage.removeItem("pm2dash_last_active");
     setUsername(null);
     setRole(null);
     router.push("/login");

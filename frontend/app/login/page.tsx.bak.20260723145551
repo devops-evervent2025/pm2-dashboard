@@ -17,7 +17,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [maskedEmail, setMaskedEmail] = useState<string | null>(null);
-  const [resendCooldown, setResendCooldown] = useState(0);
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -39,14 +38,6 @@ export default function LoginPage() {
     };
   }, [lockedSeconds]);
 
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const t = setInterval(() => {
-      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(t);
-  }, [resendCooldown]);
-
   async function handleCredentialsSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -55,7 +46,6 @@ export default function LoginPage() {
       const { maskedEmail: masked } = await login(username, password);
       setMaskedEmail(masked);
       setStep("otp");
-      setResendCooldown(60);
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
       if (detail && typeof detail === "object" && "retry_after_seconds" in detail) {
@@ -90,7 +80,6 @@ export default function LoginPage() {
       const { maskedEmail: masked } = await login(username, password);
       setMaskedEmail(masked);
       setCode("");
-      setResendCooldown(60);
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
       setError(typeof detail === "string" ? detail : "Could not resend the code");
@@ -189,13 +178,8 @@ export default function LoginPage() {
                 <button type="button" onClick={backToCredentials} className="hover:text-slate-700">
                   ← Back
                 </button>
-                <button
-                  type="button"
-                  onClick={handleResend}
-                  disabled={loading || resendCooldown > 0}
-                  className="hover:text-slate-700 disabled:text-slate-600 disabled:hover:text-slate-600"
-                >
-                  {resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : "Resend code"}
+                <button type="button" onClick={handleResend} disabled={loading} className="hover:text-slate-700">
+                  Resend code
                 </button>
               </div>
             </form>

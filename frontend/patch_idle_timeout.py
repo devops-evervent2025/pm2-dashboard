@@ -1,27 +1,20 @@
-"use client";
+path = "/var/www/fullstack/pm2-dashboard_dev/frontend/lib/auth.tsx"
+with open(path, "r", encoding="utf-8") as f:
+    content = f.read()
 
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { api, Role } from "./api";
+changes = []
 
-interface AuthState {
-  username: string | null;
-  role: Role | null;
-  isLoading: boolean;
-  login: (username: string, password: string) => Promise<{ username: string; maskedEmail: string | null }>;
-  verifyOtp: (username: string, code: string) => Promise<void>;
-  logout: () => void;
-}
+old_effect = '''  useEffect(() => {
+    const storedUser = localStorage.getItem("pm2dash_username");
+    const storedRole = localStorage.getItem("pm2dash_role") as Role | null;
+    if (storedUser && storedRole) {
+      setUsername(storedUser);
+      setRole(storedRole);
+    }
+    setIsLoading(false);
+  }, []);'''
 
-const AuthContext = createContext<AuthState | undefined>(undefined);
-
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [username, setUsername] = useState<string | null>(null);
-  const [role, setRole] = useState<Role | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const router = useRouter();
-
-  // Auto-logout if the app was closed/inactive for this long, even
+new_effect = '''  // Auto-logout if the app was closed/inactive for this long, even
   // though the JWT itself might still technically be valid for longer.
   const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
 
@@ -69,23 +62,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [username]);
+  }, [username]);'''
 
-  // Step 1: verifies username+password and triggers the emailed OTP.
-  // Does NOT set auth state yet - that only happens after verifyOtp succeeds.
-  async function login(usernameInput: string, password: string) {
-    const form = new URLSearchParams();
-    form.append("username", usernameInput);
-    form.append("password", password);
-    const res = await api.post("/auth/login", form, {
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    });
-    const { username: uname, masked_email } = res.data;
-    return { username: uname, maskedEmail: masked_email ?? null };
-  }
+if old_effect in content:
+    content = content.replace(old_effect, new_effect)
+    changes.append("idle-timeout logic added")
+else:
+    print("MISSING: original useEffect block")
 
-  // Step 2: confirms the emailed code and completes sign-in.
-  async function verifyOtp(usernameInput: string, code: string) {
+old_verify = '''  async function verifyOtp(usernameInput: string, code: string) {
+    const res = await api.post("/auth/otp/verify", { username: usernameInput, code });
+    const { access_token, role: userRole, username: uname } = res.data;
+    localStorage.setItem("pm2dash_token", access_token);
+    localStorage.setItem("pm2dash_role", userRole);
+    localStorage.setItem("pm2dash_username", uname);
+    setUsername(uname);
+    setRole(userRole);
+    router.push("/dashboard");
+  }'''
+
+new_verify = '''  async function verifyOtp(usernameInput: string, code: string) {
     const res = await api.post("/auth/otp/verify", { username: usernameInput, code });
     const { access_token, role: userRole, username: uname } = res.data;
     localStorage.setItem("pm2dash_token", access_token);
@@ -95,9 +91,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUsername(uname);
     setRole(userRole);
     router.push("/dashboard");
-  }
+  }'''
 
-  function logout() {
+if old_verify in content:
+    content = content.replace(old_verify, new_verify)
+    changes.append("verifyOtp marks active on login")
+else:
+    print("MISSING: verifyOtp function")
+
+old_logout = '''  function logout() {
+    localStorage.removeItem("pm2dash_token");
+    localStorage.removeItem("pm2dash_role");
+    localStorage.removeItem("pm2dash_username");
+    setUsername(null);
+    setRole(null);
+    router.push("/login");
+  }'''
+
+new_logout = '''  function logout() {
     localStorage.removeItem("pm2dash_token");
     localStorage.removeItem("pm2dash_role");
     localStorage.removeItem("pm2dash_username");
@@ -105,22 +116,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUsername(null);
     setRole(null);
     router.push("/login");
-  }
+  }'''
 
-  return (
-    <AuthContext.Provider value={{ username, role, isLoading, login, verifyOtp, logout }}>
-      {children}
-    </AuthContext.Provider>
-  );
-}
+if old_logout in content:
+    content = content.replace(old_logout, new_logout)
+    changes.append("logout clears last_active too")
+else:
+    print("MISSING: logout function")
 
-export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
-  return ctx;
-}
-
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("pm2dash_token");
-}
+if len(changes) == 3:
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    print("SUCCESS:", changes)
+else:
+    print("ABORTED - not all changes matched. Applied so far:", changes)

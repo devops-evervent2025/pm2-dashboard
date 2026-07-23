@@ -182,6 +182,9 @@ export default function AlertsPage() {
                 <Link
                   key={`srv-${a.serverId}`}
                   href={`/dashboard/${a.clientId}/${a.serverId}`}
+		  data-aos="fade-up"
+  		  data-aos-duration="700"
+  		  data-aos-once="true"
                   className="card p-4 flex items-center justify-between border-l-4 border-l-red-400 block hover:shadow-md"
                 >
                   <div>

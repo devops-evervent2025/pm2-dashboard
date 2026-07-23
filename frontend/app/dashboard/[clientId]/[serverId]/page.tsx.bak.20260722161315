@@ -17,7 +17,6 @@ export default function ServerProcessesPage() {
   const [processes, setProcesses] = useState<PM2ProcessItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -51,9 +50,6 @@ export default function ServerProcessesPage() {
     return () => clearInterval(interval);
   }, [role, fetchData]);
 
-  const q = searchQuery.trim().toLowerCase();
-  const filteredProcesses = q ? processes.filter((p) => p.name.toLowerCase().includes(q)) : processes;
-
   return (
     <div className="min-h-screen">
       <Navbar
@@ -84,18 +80,6 @@ export default function ServerProcessesPage() {
           </p>
         )}
 
-        {!loading && !error && processes.length > 0 && (
-          <div className="mb-6">
-            <input
-              type="text"
-              placeholder="Search PM2 process name…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="input-field text-sm w-full max-w-md"
-            />
-          </div>
-        )}
-
         {loading && <p className="text-slate-500">Loading processes…</p>}
         {error && <p className="text-red-600">{error}</p>}
 
@@ -105,14 +89,8 @@ export default function ServerProcessesPage() {
           </div>
         )}
 
-        {!loading && !error && processes.length > 0 && filteredProcesses.length === 0 && (
-          <div className="card p-10 text-center text-slate-500">
-            No processes match &quot;{searchQuery}&quot;.
-          </div>
-        )}
-
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredProcesses.map((p) => (
+          {processes.map((p) => (
             <ProcessCard
               key={p.pm_id}
               serverId={Number(serverId)}

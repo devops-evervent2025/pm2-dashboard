@@ -470,7 +470,7 @@ export default function ReposPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="md:col-span-1">
-                <div className="card divide-y divide-slate-100 overflow-hidden">
+                <div className="card divide-y divide-slate-100 overflow-hidden" data-aos="fade-up" data-aos-duration="500" data-aos-once="true">
                   {loadingClientRepos && (
                     <p className="p-4 text-sm text-slate-500">Loading repos for this client…</p>
                   )}
