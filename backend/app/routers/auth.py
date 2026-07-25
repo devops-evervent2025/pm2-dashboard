@@ -12,11 +12,34 @@ from app.auth import (
     hash_password, verify_password, AccountLockedError,
 )
 from app.schemas import Token, UserOut, UserCreate, UserUpdate
-from app.models import User
+from app.models import User, SecretRevealAudit, CurlCommandAudit, ProcessLogAudit
 from app.otp_models import LoginOtp
 from app.email_utils import send_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+def _clear_user_references(db: Session, user_id: int):
+    """Before deleting a user, null out every FK column across the whole
+    schema that references users.id - audit tables, created_by columns,
+    anything. Discovers these from the database itself rather than a
+    hardcoded table list, so it can't miss a table added later."""
+    from sqlalchemy import inspect as sa_inspect, text
+
+    engine = db.get_bind()
+    inspector = sa_inspect(engine)
+    for table_name in inspector.get_table_names():
+        if table_name == "users":
+            continue
+        for fk in inspector.get_foreign_keys(table_name):
+            if fk.get("referred_table") != "users":
+                continue
+            for local_col, remote_col in zip(fk["constrained_columns"], fk["referred_columns"]):
+                if remote_col == "id":
+                    db.execute(
+                        text(f"UPDATE {table_name} SET {local_col} = NULL WHERE {local_col} = :uid"),
+                        {"uid": user_id},
+                    )
+    db.commit()
 
 
 OTP_EXPIRY_MINUTES = 5
@@ -27,6 +50,11 @@ class LoginResponse(BaseModel):
     otp_required: bool = True
     username: str
     masked_email: str | None = None
+    access_token: str | None = None
+    role: str | None = None
+
+
+OTP_GRACE_PERIOD = datetime.timedelta(hours=1)
 
 
 class OtpVerifyRequest(BaseModel):
@@ -75,6 +103,18 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This account has no email on file - an admin must add one before you can sign in.",
+        )
+
+    # If this account completed OTP verification within the last hour,
+    # skip asking again - password alone is enough within that window.
+    now = datetime.datetime.utcnow()
+    if user.last_otp_verified_at and (now - user.last_otp_verified_at) < OTP_GRACE_PERIOD:
+        token = create_access_token({"sub": user.username, "role": user.role.value})
+        return LoginResponse(
+            otp_required=False,
+            username=user.username,
+            access_token=token,
+            role=user.role.value,
         )
 
     code = f"{random.randint(0, 999999):06d}"
@@ -135,6 +175,7 @@ def verify_otp(payload: OtpVerifyRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Incorrect code")
 
     otp.used = True
+    user.last_otp_verified_at = datetime.datetime.utcnow()
     db.commit()
 
     token = create_access_token({"sub": user.username, "role": user.role.value})
@@ -224,6 +265,11 @@ def delete_user(
         )
         if other_active_admins == 0:
             raise HTTPException(status_code=400, detail="Cannot delete the last remaining admin.")
+
+    # Clear every FK reference to this user across the whole schema first -
+    # MySQL's default ON DELETE RESTRICT would otherwise block deleting any
+    # user who's referenced anywhere (audit tables, created_by columns, etc).
+    _clear_user_references(db, user.id)
 
     db.delete(user)
     db.commit()

@@ -105,3 +105,11 @@ body {
   background-color: #1e293b;
   color: #e2e8f0;
 }
+
+/* Staggered start times for the login page's floating gradient blobs */
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+.animation-delay-4000 {
+  animation-delay: 4s;
+}

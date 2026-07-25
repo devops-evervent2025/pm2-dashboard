@@ -8,7 +8,7 @@ interface AuthState {
   username: string | null;
   role: Role | null;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<{ username: string; maskedEmail: string | null }>;
+  login: (username: string, password: string) => Promise<{ username: string; maskedEmail: string | null; otpRequired: boolean }>;
   verifyOtp: (username: string, code: string) => Promise<void>;
   logout: () => void;
 }
@@ -80,8 +80,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const res = await api.post("/auth/login", form, {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
     });
-    const { username: uname, masked_email } = res.data;
-    return { username: uname, maskedEmail: masked_email ?? null };
+    const { username: uname, masked_email, otp_required, access_token, role: userRole } = res.data;
+
+    if (otp_required === false && access_token) {
+      // Within the 1-hour grace period - the backend already issued a
+      // real token, no OTP screen needed.
+      localStorage.setItem("pm2dash_token", access_token);
+      localStorage.setItem("pm2dash_role", userRole);
+      localStorage.setItem("pm2dash_username", uname);
+      markActive();
+      setUsername(uname);
+      setRole(userRole);
+      router.push("/dashboard");
+      return { username: uname, maskedEmail: null, otpRequired: false };
+    }
+
+    return { username: uname, maskedEmail: masked_email ?? null, otpRequired: true };
   }
 
   // Step 2: confirms the emailed code and completes sign-in.
