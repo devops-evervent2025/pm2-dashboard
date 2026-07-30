@@ -5,6 +5,34 @@ import { useRouter } from "next/navigation";
 import { WS_URL } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 
+function logLineColorClass(line: string): string {
+  const jsonMatch = line.match(/"level"\s*:\s*"([a-zA-Z]+)"/);
+  const level = jsonMatch ? jsonMatch[1].toLowerCase() : null;
+
+  if (level === "error" || level === "fatal" || level === "critical") {
+    return "text-red-400";
+  }
+  if (level === "warn" || level === "warning") {
+    return "text-amber-400";
+  }
+  if (level === "info" || level === "success") {
+    return "text-emerald-400";
+  }
+
+  const lowered = line.toLowerCase();
+  if (/\berror\b|\bfatal\b|\bexception\b|\bfailed\b/.test(lowered)) {
+    return "text-red-400";
+  }
+  if (/\bwarn(ing)?\b/.test(lowered)) {
+    return "text-amber-400";
+  }
+  if (/\bsuccess(ful(ly)?)?\b/.test(lowered)) {
+    return "text-emerald-400";
+  }
+  return "text-slate-100";
+}
+
+
 export default function LogsTerminal({
   serverId,
   processName,
@@ -166,7 +194,7 @@ export default function LogsTerminal({
             <p className="text-slate-500">Waiting for log output…</p>
           )}
           {lines.map((line, i) => (
-            <div key={i} className="whitespace-pre-wrap break-all">
+            <div key={i} className={`whitespace-pre-wrap break-all ${logLineColorClass(line)}`}>
               {line}
             </div>
           ))}

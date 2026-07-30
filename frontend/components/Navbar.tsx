@@ -30,10 +30,21 @@ interface SslNotification {
   hours_remaining?: number | null;
 }
 
+interface DomainDownNotification {
+  client_id?: number | null;
+  client_name?: string | null;
+  server_id: number;
+  server_name?: string | null;
+  domain: string;
+  status_code: number;
+  first_detected_at?: string | null;
+}
+
 interface NotificationSummary {
   total: number;
   process_alerts: ProcessNotification[];
   ssl_alerts: SslNotification[];
+  domain_down_alerts: DomainDownNotification[];
   generated_at: string;
   cached: boolean;
 }
@@ -303,6 +314,30 @@ function NotificationBell() {
                           : `expires in ${a.hours_remaining.toFixed(1)}h`
                         : ""}{" "}
                       · {a.client_name || "Unknown client"}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {summary && summary.domain_down_alerts.length > 0 && (
+            <div className="px-4 py-2 border-t border-slate-100">
+              <p className="text-xs font-semibold text-slate-500 uppercase mb-1">
+                Domains returning errors
+              </p>
+              <div className="space-y-1.5">
+                {summary.domain_down_alerts.map((a, i) => (
+                  <Link
+                    key={`domain-${i}`}
+                    href="/dashboard/ssl"
+                    onClick={() => setOpen(false)}
+                    className="block px-2 py-1.5 rounded-md hover:bg-slate-50"
+                  >
+                    <p className="text-sm text-slate-800">{a.domain}</p>
+                    <p className="text-xs text-red-600">
+                      HTTP {a.status_code} · {a.client_name || "Unknown client"}
+                      {a.server_name ? ` · ${a.server_name}` : ""}
                     </p>
                   </Link>
                 ))}

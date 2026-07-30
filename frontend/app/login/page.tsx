@@ -106,6 +106,22 @@ export default function LoginPage() {
     setError(null);
   }
 
+  // Client-side navigation (e.g. after logout) can carry over a
+  // horizontal/vertical scroll position from the previous page. The
+  // browser's own automatic scroll restoration can also re-apply an old
+  // position AFTER this component mounts, so we both disable that and
+  // force every scroll container back to (0, 0) directly.
+  useEffect(() => {
+    if (typeof window !== "undefined" && "scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+    window.scrollTo(0, 0);
+    document.documentElement.scrollLeft = 0;
+    document.documentElement.scrollTop = 0;
+    document.body.scrollLeft = 0;
+    document.body.scrollTop = 0;
+  }, []);
+
   const isLocked = lockedSeconds !== null && lockedSeconds > 0;
 
   return (
@@ -123,7 +139,7 @@ export default function LoginPage() {
         }}
       />
 
-      <div className="relative w-full max-w-sm animate-fade-in-up">
+      <div className="relative w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-500 to-indigo-600 shadow-lg shadow-brand-500/30 mb-4 animate-scale-in">
             <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7">

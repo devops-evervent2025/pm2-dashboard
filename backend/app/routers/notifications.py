@@ -26,6 +26,7 @@ from app.notification_models import NotificationRecipient, NotificationSentLog
 from app.email_utils import send_email
 from app.ssh_manager import list_pm2_processes, SSHConnectionError
 from app.routers.ssl_dashboard import SslDomain
+from app.routers.domain_health import DomainHealthIssue
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -52,10 +53,21 @@ class SslNotification(BaseModel):
     hours_remaining: Optional[float] = None
 
 
+class DomainDownNotification(BaseModel):
+    client_id: Optional[int] = None
+    client_name: Optional[str] = None
+    server_id: int
+    server_name: Optional[str] = None
+    domain: str
+    status_code: int
+    first_detected_at: Optional[datetime.datetime] = None
+
+
 class NotificationSummary(BaseModel):
     total: int
     process_alerts: List[ProcessNotification]
     ssl_alerts: List[SslNotification]
+    domain_down_alerts: List[DomainDownNotification]
     generated_at: datetime.datetime
     cached: bool
 
@@ -134,6 +146,26 @@ def _collect_ssl_alerts(db: Session) -> List[SslNotification]:
             hours_remaining=round(hours_remaining, 1),
         ))
     alerts.sort(key=lambda a: a.hours_remaining if a.hours_remaining is not None else 999999)
+    return alerts
+
+
+def _collect_domain_down_alerts(db: Session) -> List[DomainDownNotification]:
+    alerts: List[DomainDownNotification] = []
+    servers = {s.id: s for s in db.query(Server).all()}
+    clients = {c.id: c.name for c in db.query(Client).all()}
+
+    rows = db.query(DomainHealthIssue).all()
+    for row in rows:
+        srv = servers.get(row.server_id)
+        alerts.append(DomainDownNotification(
+            client_id=srv.client_id if srv else None,
+            client_name=clients.get(srv.client_id) if srv else None,
+            server_id=row.server_id,
+            server_name=srv.name if srv else None,
+            domain=row.domain,
+            status_code=row.status_code,
+            first_detected_at=row.first_detected_at,
+        ))
     return alerts
 
 
@@ -322,17 +354,20 @@ def get_notification_summary(
             total=cached_summary.total,
             process_alerts=cached_summary.process_alerts,
             ssl_alerts=cached_summary.ssl_alerts,
+            domain_down_alerts=cached_summary.domain_down_alerts,
             generated_at=cached_summary.generated_at,
             cached=True,
         )
 
     process_alerts = _collect_process_alerts(db)
     ssl_alerts = _collect_ssl_alerts(db)
+    domain_down_alerts = _collect_domain_down_alerts(db)
 
     summary = NotificationSummary(
-        total=len(process_alerts) + len(ssl_alerts),
+        total=len(process_alerts) + len(ssl_alerts) + len(domain_down_alerts),
         process_alerts=process_alerts,
         ssl_alerts=ssl_alerts,
+        domain_down_alerts=domain_down_alerts,
         generated_at=datetime.datetime.utcnow(),
         cached=False,
     )

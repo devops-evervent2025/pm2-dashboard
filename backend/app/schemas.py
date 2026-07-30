@@ -199,3 +199,33 @@ class CurlCommandResponse(BaseModel):
     stdout: str
     stderr: str
     exit_status: Optional[int] = None
+
+
+# ---------------- Server log browser (per managed server, via SSH) ----------------
+class LogSourceCreate(BaseModel):
+    label: str
+    remote_path: str
+
+
+class LogSourceOut(BaseModel):
+    id: int
+    server_id: int
+    label: str
+    remote_path: str
+    created_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+
+class LogFileEntry(BaseModel):
+    name: str
+    size_bytes: int
+    modified: Optional[str] = None
+    is_gz: bool
+
+
+class LogTailResponse(BaseModel):
+    filename: str
+    lines: List[str]
+    truncated: bool

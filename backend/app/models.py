@@ -124,3 +124,16 @@ class CurlCommandAudit(Base):
     command = Column(Text, nullable=False)
     exit_status = Column(Integer, nullable=True)
     executed_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class ServerLogSource(Base):
+    """An admin-configured log directory on a managed server to browse,
+    e.g. server=Rag Pipeline Server, remote_path=/var/www/backend/Production/integrations-node/logs."""
+    __tablename__ = "server_log_sources"
+
+    id = Column(Integer, primary_key=True, index=True)
+    server_id = Column(Integer, ForeignKey("servers.id"), nullable=False)
+    remote_path = Column(String(500), nullable=False)
+    label = Column(String(255), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)

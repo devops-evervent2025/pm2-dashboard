@@ -187,7 +187,9 @@ def _scan_and_store(server: Server, db: Session) -> List[dict]:
     the manual scan endpoints and the periodic background scan."""
     scanned = _scan_server(server)
     now = datetime.datetime.utcnow()
+    scanned_domains = set()
     for item in scanned:
+        scanned_domains.add(item["domain"])
         existing = (
             db.query(SslDomain)
             .filter(SslDomain.server_id == server.id, SslDomain.domain == item["domain"])
@@ -202,6 +204,23 @@ def _scan_and_store(server: Server, db: Session) -> List[dict]:
                 server_id=server.id, domain=item["domain"], cert_path=item["cert_path"],
                 expires_at=item["expires_at"], last_scanned_at=now,
             ))
+
+    # Remove DB entries for this server that no longer exist in the
+    # latest scan (e.g. nginx conf was deleted) - keeps DB in sync with
+    # what's actually on the server right now.
+    if scanned_domains:
+        stale = (
+            db.query(SslDomain)
+            .filter(SslDomain.server_id == server.id, ~SslDomain.domain.in_(scanned_domains))
+            .all()
+        )
+    else:
+        stale = db.query(SslDomain).filter(SslDomain.server_id == server.id).all()
+
+    for row in stale:
+        logger.info(f"[ssl_scan] removing stale domain {row.domain} (server {server.name}) - not found in latest scan")
+        db.delete(row)
+
     db.commit()
     return scanned
 

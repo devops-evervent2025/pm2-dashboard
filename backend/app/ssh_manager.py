@@ -3,6 +3,7 @@ Handles all SSH connections to remote servers and running PM2 commands
 on them via Paramiko.
 """
 import json
+import socket
 import os
 import shlex
 from typing import List, Optional, Generator
@@ -107,9 +108,16 @@ def run_restricted_command(server: Server, command: str, timeout: int = 30) -> d
     try:
         wrapped = f"bash -lc {shlex.quote(command)}"
         stdin, stdout, stderr = client.exec_command(wrapped, timeout=timeout)
-        out = stdout.read().decode(errors="ignore")
-        err = stderr.read().decode(errors="ignore")
-        exit_status = stdout.channel.recv_exit_status()
+        try:
+            out = stdout.read().decode(errors="ignore")
+            err = stderr.read().decode(errors="ignore")
+            exit_status = stdout.channel.recv_exit_status()
+        except (socket.timeout, paramiko.buffered_pipe.PipeTimeout):
+            return {
+                "stdout": "",
+                "stderr": f"Command timed out after {timeout}s (remote host slow or unreachable).",
+                "exit_status": -1,
+            }
         return {"stdout": out, "stderr": err, "exit_status": exit_status}
     finally:
         client.close()
@@ -196,9 +204,81 @@ def run_restricted_command(server: Server, command: str, timeout: int = 30) -> d
     try:
         wrapped = f"bash -lc {shlex.quote(command)}"
         stdin, stdout, stderr = client.exec_command(wrapped, timeout=timeout)
-        out = stdout.read().decode(errors="ignore")
-        err = stderr.read().decode(errors="ignore")
-        exit_status = stdout.channel.recv_exit_status()
+        try:
+            out = stdout.read().decode(errors="ignore")
+            err = stderr.read().decode(errors="ignore")
+            exit_status = stdout.channel.recv_exit_status()
+        except (socket.timeout, paramiko.buffered_pipe.PipeTimeout):
+            return {
+                "stdout": "",
+                "stderr": f"Command timed out after {timeout}s (remote host slow or unreachable).",
+                "exit_status": -1,
+            }
         return {"stdout": out, "stderr": err, "exit_status": exit_status}
+    finally:
+        client.close()
+
+
+# ---------------- Docker containers (mirrors the PM2 process functions above) ----------------
+
+def list_docker_containers(server: Server) -> List[dict]:
+    """Lists ALL containers (running + stopped) via `docker ps -a`, one
+    JSON object per line (--format), so partial output never breaks
+    parsing of the rest."""
+    raw = run_command(
+        server,
+        "docker ps -a --format "
+        "'{{json .}}'",
+    )
+    containers = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        containers.append({
+            "id": data.get("ID"),
+            "name": data.get("Names"),
+            "image": data.get("Image"),
+            "status": data.get("Status", ""),
+            "state": data.get("State", "unknown"),
+            "ports": data.get("Ports", ""),
+            "created": data.get("CreatedAt", ""),
+        })
+    return containers
+
+
+def docker_action(server: Server, container_name: str, action: str) -> str:
+    safe_name = shlex.quote(container_name)
+    return run_command(server, f"docker {action} {safe_name}")
+
+
+def stream_docker_logs(server: Server, container_name: str) -> Generator[str, None, None]:
+    client = _connect(server)
+    try:
+        transport = client.get_transport()
+        channel = transport.open_session()
+        channel.get_pty()
+        safe_name = shlex.quote(container_name)
+        channel.exec_command(
+            f"bash -lc {shlex.quote(f'docker logs -f --tail 100 {safe_name}')}"
+        )
+        buffer = b""
+        while True:
+            if channel.recv_ready():
+                chunk = channel.recv(4096)
+                if not chunk:
+                    break
+                buffer += chunk
+                while b"\n" in buffer:
+                    line, buffer = buffer.split(b"\n", 1)
+                    yield line.decode(errors="ignore")
+            elif channel.exit_status_ready():
+                break
+            else:
+                yield None
     finally:
         client.close()

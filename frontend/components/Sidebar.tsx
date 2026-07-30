@@ -40,11 +40,13 @@ export default function Sidebar() {
       !pathname.startsWith("/dashboard/alerts") &&
       !pathname.startsWith("/dashboard/users") &&
       !pathname.startsWith("/dashboard/repos") &&
-      !pathname.startsWith("/dashboard/ssl"));
+      !pathname.startsWith("/dashboard/ssl") &&
+      !pathname.startsWith("/dashboard/app-logs"));
   const isAlertsActive = pathname.startsWith("/dashboard/alerts");
   const isReposActive = pathname.startsWith("/dashboard/repos");
   const isSslActive = pathname.startsWith("/dashboard/ssl");
   const isTerminalActive = pathname.startsWith("/dashboard/terminal");
+  const isAppLogsActive = pathname.startsWith("/dashboard/app-logs");
 
   return (
     <aside className="w-56 shrink-0 bg-white border-r border-slate-200 min-h-screen py-6 px-3 hidden sm:block dark:bg-slate-900 dark:border-slate-700">
@@ -95,6 +97,20 @@ export default function Sidebar() {
               <path
                 fillRule="evenodd"
                 d="M2 4a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V4zm3.28 2.22a.75.75 0 00-1.06 1.06L6.44 9.5l-2.22 2.22a.75.75 0 101.06 1.06l2.75-2.75a.75.75 0 000-1.06L5.28 6.22zM9.5 12.25a.75.75 0 000 1.5h4a.75.75 0 000-1.5h-4z"
+                clipRule="evenodd"
+              />
+            </svg>
+          }
+        />
+        <NavItem
+          href="/dashboard/app-logs"
+          label="App Logs"
+          active={isAppLogsActive}
+          icon={
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+              <path
+                fillRule="evenodd"
+                d="M4 4a2 2 0 012-2h5.586A2 2 0 0113 2.586L15.414 5A2 2 0 0116 6.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm3 5a1 1 0 000 2h6a1 1 0 100-2H7zm0 4a1 1 0 100 2h6a1 1 0 100-2H7z"
                 clipRule="evenodd"
               />
             </svg>
