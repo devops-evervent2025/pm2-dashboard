@@ -5,11 +5,12 @@ from app.config import get_settings
 from app.database import Base, engine
 from app import notification_models  # noqa: F401
 from app import otp_models  # noqa: F401
-from app.routers import auth, clients, servers, processes, logs, system, remote_repos, terminal, ssl_dashboard, notifications, activity_log, domain_health, server_logs
+from app.routers import auth, clients, servers, processes, logs, system, remote_repos, terminal, ssl_dashboard, notifications, activity_log, domain_health, server_logs, replication_health
 
 from app.routers.ssl_dashboard import start_periodic_ssl_scan
 from app.routers.notifications import start_daily_digest_scheduler
 from app.routers.domain_health import start_periodic_domain_health_check
+from app.routers.replication_health import start_periodic_replication_health_check
 from app.init_db import bootstrap_admin
 from app.auto_migrate import run_auto_migrations
 
@@ -38,6 +39,7 @@ app.include_router(notifications.router)
 app.include_router(activity_log.router)
 app.include_router(domain_health.router)
 app.include_router(server_logs.router)
+app.include_router(replication_health.router)
 
 
 @app.on_event("startup")
@@ -49,6 +51,7 @@ def on_startup():
     start_periodic_ssl_scan()
     start_daily_digest_scheduler()
     start_periodic_domain_health_check()
+    start_periodic_replication_health_check()
 
 
 @app.get("/health")
