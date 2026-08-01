@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: str = ""
     SMTP_USE_TLS: bool = True
 
+    # MaxScale replication monitoring. Leave the URL empty to disable it.
+    MAXSCALE_API_URL: str = ""
+    MAXSCALE_API_USERNAME: str = ""
+    MAXSCALE_API_PASSWORD: str = ""
+    MAXSCALE_CHECK_INTERVAL_SECONDS: int = 30
+
     @property
     def SQLALCHEMY_DATABASE_URL(self) -> str:
         return (

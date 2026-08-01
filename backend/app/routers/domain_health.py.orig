@@ -84,11 +84,17 @@ def _check_domain_http_status(domain: str, timeout: int = 10) -> Optional[int]:
 
 
 def _get_admin_emails(db: Session) -> List[str]:
-    """Return every configured email-notification recipient.
-
-    Domain-health alerts follow the same recipient list as PM2 and SSL alerts.
-    """
-    return sorted({r.email for r in db.query(NotificationRecipient).all() if r.email})
+    """Admin-role users whose email address is ALSO present in the
+    Email Notification Recipients list - i.e. removing someone from that
+    recipients list stops domain-health emails to them too, same as it
+    already does for PM2/SSL alerts."""
+    admin_emails = {
+        u.email for u in db.query(User)
+        .filter(User.role == RoleEnum.admin, User.email.isnot(None), User.email != "")
+        .all()
+    }
+    recipient_emails = {r.email for r in db.query(NotificationRecipient).all()}
+    return sorted(admin_emails & recipient_emails)
 
 
 def _send_domain_down_email(db: Session, server_name: Optional[str], client_name: Optional[str], domain: str, status_code: int):
