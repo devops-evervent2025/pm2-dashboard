@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 interface LogSource {
   id: number;
@@ -34,6 +35,7 @@ function lineColorClass(line: string): string {
 }
 
 export default function ServerLogsBrowser({ serverId }: { serverId: number }) {
+  const { role } = useAuth();
   const [sources, setSources] = useState<LogSource[]>([]);
   const [activeSourceId, setActiveSourceId] = useState<number | null>(null);
   const [files, setFiles] = useState<LogFileEntry[]>([]);
@@ -153,9 +155,11 @@ export default function ServerLogsBrowser({ serverId }: { serverId: number }) {
             <span className="text-sm text-slate-400">No log paths configured yet.</span>
           )}
         </div>
-        <button onClick={() => setShowAddModal(true)} className="btn-secondary text-sm">
-          + Add Log Path
-        </button>
+        {role === "admin" && (
+          <button onClick={() => setShowAddModal(true)} className="btn-secondary text-sm">
+            + Add Log Path
+          </button>
+        )}
       </div>
 
       {error && <p className="text-red-600 text-sm">{error}</p>}

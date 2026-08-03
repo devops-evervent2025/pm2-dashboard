@@ -152,26 +152,73 @@ def _server_has_nginx(server: Server) -> bool:
     return "YES" in output
 
 
-def _run_periodic_ssl_scan():
-    """Background loop: re-scans every server with an nginx conf dir once
-    every 6 hours, so certificate data stays fresh without every page
-    load or manual click needing to wait on SSH to the whole fleet."""
+# Shared state for a full scan-all pass, whether triggered manually or by
+# the periodic loop. Lives in memory (not the DB) since it only needs to
+# survive within this backend process; a restart naturally resets it,
+# which is fine since any in-progress scan is gone anyway on restart.
+_scan_lock = threading.Lock()
+_scan_state = {
+    "running": False,
+    "started_at": None,
+    "finished_at": None,
+    "servers_total": 0,
+    "servers_done": 0,
+    "current_server": None,
+    "error": None,
+}
+
+
+def _do_full_scan():
+    """Runs a full scan-all pass across every eligible server. Safe to call
+    from a request-triggered background thread OR the periodic loop -
+    _scan_lock ensures only one of these ever runs at a time, so a manual
+    "Refresh all" and the periodic 2-hour scan can never collide and
+    double-write the same rows."""
     from app.database import SessionLocal
 
+    if not _scan_lock.acquire(blocking=False):
+        logger.info("[ssl_scan] scan requested but one is already running - skipping")
+        return
+
+    db = SessionLocal()
+    try:
+        servers = db.query(Server).all()
+        eligible = [s for s in servers if _server_has_nginx(s)]
+        _scan_state.update({
+            "running": True,
+            "started_at": datetime.datetime.utcnow().isoformat(),
+            "finished_at": None,
+            "servers_total": len(eligible),
+            "servers_done": 0,
+            "current_server": None,
+            "error": None,
+        })
+        for server in eligible:
+            _scan_state["current_server"] = server.name
+            try:
+                _scan_and_store(server, db)
+            except Exception as exc:
+                logger.warning(f"[ssl_scan] scan of {server.name} failed: {exc}")
+            _scan_state["servers_done"] += 1
+        _scan_state["current_server"] = None
+    except Exception as exc:
+        _scan_state["error"] = str(exc)
+        logger.exception("[ssl_scan] full scan crashed")
+    finally:
+        db.close()
+        _scan_state["running"] = False
+        _scan_state["finished_at"] = datetime.datetime.utcnow().isoformat()
+        _scan_lock.release()
+
+
+def _run_periodic_ssl_scan():
+    """Background loop: re-scans every server with an nginx conf dir once
+    every 2 hours, so certificate data stays fresh without every page
+    load or manual click needing to wait on SSH to the whole fleet."""
     while True:
-        time.sleep(6 * 60 * 60)
+        time.sleep(2 * 60 * 60)
         logger.info("[ssl_scan] periodic scan starting")
-        db = SessionLocal()
-        try:
-            for server in db.query(Server).all():
-                if not _server_has_nginx(server):
-                    continue
-                try:
-                    _scan_and_store(server, db)
-                except Exception as exc:
-                    logger.warning(f"[ssl_scan] periodic scan of {server.name} failed: {exc}")
-        finally:
-            db.close()
+        _do_full_scan()
         logger.info("[ssl_scan] periodic scan finished")
 
 
@@ -322,26 +369,37 @@ def scan_server(server_id: int, db: Session = Depends(get_db), _admin: User = De
     )
 
 
-@router.post("/scan-all", response_model=List[SslScanResponse])
-def scan_all_servers(db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
-    results = []
-    for server in db.query(Server).all():
-        if not _server_has_nginx(server):
-            continue  # skip servers with no nginx conf dir entirely - nothing to scan
-        try:
-            scanned = _scan_and_store(server, db)
-        except HTTPException:
-            results.append(SslScanResponse(
-                server_id=server.id, server_name=server.name, domains_found=0, domains=[],
-            ))
-            continue
+class ScanStartResponse(BaseModel):
+    started: bool
+    already_running: bool
 
-        rows = db.query(SslDomain).filter(SslDomain.server_id == server.id).all()
-        results.append(SslScanResponse(
-            server_id=server.id, server_name=server.name, domains_found=len(scanned),
-            domains=[_to_out(r, server.name) for r in rows],
-        ))
-    return results
+
+class ScanStatusResponse(BaseModel):
+    running: bool
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    servers_total: int
+    servers_done: int
+    current_server: Optional[str] = None
+    error: Optional[str] = None
+
+
+@router.post("/scan-all", response_model=ScanStartResponse)
+def scan_all_servers(_admin: User = Depends(require_admin)):
+    """Starts a full scan-all pass in the background and returns
+    immediately - the scan itself keeps running on the server even if the
+    browser disconnects, refreshes, or closes. Poll /ssl/scan-status to
+    track progress from any browser tab, at any time."""
+    if _scan_state["running"]:
+        return ScanStartResponse(started=False, already_running=True)
+    thread = threading.Thread(target=_do_full_scan, daemon=True)
+    thread.start()
+    return ScanStartResponse(started=True, already_running=False)
+
+
+@router.get("/scan-status", response_model=ScanStatusResponse)
+def scan_status(_user: User = Depends(get_current_user)):
+    return ScanStatusResponse(**_scan_state)
 
 
 @router.delete("/domains/{domain_id}")

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -17,6 +17,16 @@ interface SslDomainItem {
   expires_at?: string | null;
   days_remaining?: number | null;
   last_scanned_at?: string | null;
+}
+
+interface ScanStatus {
+  running: boolean;
+  started_at: string | null;
+  finished_at: string | null;
+  servers_total: number;
+  servers_done: number;
+  current_server: string | null;
+  error: string | null;
 }
 
 function statusStyle(days: number | null | undefined) {
@@ -40,9 +50,15 @@ export default function SslDashboardPage() {
   const [domains, setDomains] = useState<SslDomainItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [scanningAll, setScanningAll] = useState(false);
+  const [scanStatus, setScanStatus] = useState<ScanStatus | null>(null);
+  const [scanElapsed, setScanElapsed] = useState(0);
+  const [scanJustSucceeded, setScanJustSucceeded] = useState(false);
   const [showAllOk, setShowAllOk] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<number | null | "unassigned">(null);
+
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const elapsedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wasRunningRef = useRef(false);
 
   const fetchDomains = useCallback(async () => {
     setLoading(true);
@@ -57,29 +73,83 @@ export default function SslDashboardPage() {
     }
   }, []);
 
+  // Polls scan-status. Reschedules itself while a scan is running, so this
+  // keeps tracking real backend progress regardless of refreshes - a scan
+  // started in one tab, or by the periodic 2-hour job, shows up here too.
+  const pollStatus = useCallback(async () => {
+    try {
+      const res = await api.get<ScanStatus>("/ssl/scan-status");
+      setScanStatus(res.data);
+
+      if (res.data.running) {
+        wasRunningRef.current = true;
+        pollTimeoutRef.current = setTimeout(pollStatus, 2000);
+      } else {
+        if (wasRunningRef.current) {
+          // A scan that WAS running just finished - reload results.
+          wasRunningRef.current = false;
+          await fetchDomains();
+          setScanJustSucceeded(true);
+          setTimeout(() => setScanJustSucceeded(false), 3000);
+        }
+      }
+    } catch {
+      // Transient error polling status - keep trying while we still think
+      // a scan might be running.
+      if (wasRunningRef.current) {
+        pollTimeoutRef.current = setTimeout(pollStatus, 3000);
+      }
+    }
+  }, [fetchDomains]);
+
   useEffect(() => {
     if (!isLoading && !role) {
       router.replace("/login");
       return;
     }
-    if (role) fetchDomains();
+    if (role) {
+      fetchDomains();
+      pollStatus(); // picks up an already-running scan after a refresh
+    }
+    return () => {
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+      if (elapsedIntervalRef.current) clearInterval(elapsedIntervalRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, isLoading, router, fetchDomains]);
 
+  // Elapsed-time ticker, computed from the backend's started_at so it's
+  // accurate even if this page was just opened mid-scan.
+  useEffect(() => {
+    if (elapsedIntervalRef.current) {
+      clearInterval(elapsedIntervalRef.current);
+      elapsedIntervalRef.current = null;
+    }
+    if (scanStatus?.running && scanStatus.started_at) {
+      const startMs = Date.parse(scanStatus.started_at + "Z");
+      const tick = () => setScanElapsed(Math.max(1, Math.round((Date.now() - startMs) / 1000)));
+      tick();
+      elapsedIntervalRef.current = setInterval(tick, 1000);
+    } else {
+      setScanElapsed(0);
+    }
+    return () => {
+      if (elapsedIntervalRef.current) clearInterval(elapsedIntervalRef.current);
+    };
+  }, [scanStatus?.running, scanStatus?.started_at]);
+
   async function scanAll() {
-    setScanningAll(true);
     try {
       await api.post("/ssl/scan-all");
-      await fetchDomains();
     } catch (err: any) {
-      alert(err?.response?.data?.detail || "Scan failed");
-    } finally {
-      setScanningAll(false);
+      alert(err?.response?.data?.detail || "Failed to start scan");
+      return;
     }
+    pollStatus();
   }
 
   const threshold = 30;
 
-  // Group domains by client for the top-level client list view
   const clientGroups = useMemo(() => {
     const groups = new Map<string, { clientId: number | "unassigned"; clientName: string; domains: SslDomainItem[] }>();
     for (const d of domains) {
@@ -107,6 +177,14 @@ export default function SslDashboardPage() {
         );
   }, [selectedGroup, showAllOk]);
 
+  const scanButtonLabel = scanJustSucceeded
+    ? "✓ Scan complete"
+    : scanStatus?.running
+    ? `Scanning… (${scanElapsed}s${
+        scanStatus.servers_total ? ` · ${scanStatus.servers_done}/${scanStatus.servers_total} servers` : ""
+      })`
+    : "Refresh all";
+
   return (
     <div className="min-h-screen">
       <Navbar crumbs={[{ label: "SSL Certificates" }]} />
@@ -117,11 +195,16 @@ export default function SslDashboardPage() {
             <p className="text-sm text-slate-500">
               Domains and certificates are auto-detected from each server&apos;s nginx conf folder,
               grouped by client. Each certificate is checked directly over HTTPS, per domain.
+              Scans also run automatically every 2 hours.
             </p>
           </div>
           {role === "admin" && (
-            <button className="btn-primary text-sm" onClick={scanAll} disabled={scanningAll}>
-              {scanningAll ? "Scanning all servers…" : "Refresh all"}
+            <button
+              className={`btn-primary text-sm ${scanStatus?.running ? "cursor-not-allowed opacity-70" : ""}`}
+              onClick={scanAll}
+              disabled={!!scanStatus?.running}
+            >
+              {scanButtonLabel}
             </button>
           )}
         </div>

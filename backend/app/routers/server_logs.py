@@ -14,6 +14,11 @@ from app.ssh_manager import run_command as ssh_run_command, _connect as ssh_conn
 router = APIRouter(prefix="/servers/{server_id}/logs", tags=["server-logs"])
 
 
+def _require_admin(user):
+    if getattr(user, "role", None) != models.RoleEnum.admin:
+        raise HTTPException(403, "Admin access required")
+
+
 @router.get("/sources", response_model=List[schemas.LogSourceOut])
 def list_log_sources(server_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     return db.query(models.ServerLogSource).filter_by(server_id=server_id).all()
@@ -26,6 +31,7 @@ def add_log_source(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
+    _require_admin(user)
     server = db.query(models.Server).filter_by(id=server_id).first()
     if not server:
         raise HTTPException(404, "Server not found")
@@ -44,6 +50,7 @@ def add_log_source(
 
 @router.delete("/sources/{source_id}")
 def delete_log_source(server_id: int, source_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    _require_admin(user)
     source = db.query(models.ServerLogSource).filter_by(id=source_id, server_id=server_id).first()
     if not source:
         raise HTTPException(404, "Log source not found")
