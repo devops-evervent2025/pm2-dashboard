@@ -95,3 +95,34 @@ export interface EnvFileItem {
   file_path: string;
   keys: EnvKeyItem[];
 }
+
+// ---- Server Resources (CPU/RAM/Disk) ----
+export interface ServerResourceItem {
+  server_id: number;
+  name: string;
+  status: "online" | "offline" | "error";
+  cpu_percent?: number | null;
+  ram_used_mb?: number | null;
+  ram_total_mb?: number | null;
+  ram_percent?: number | null;
+  disk_used?: string | null;
+  disk_total?: string | null;
+  disk_percent?: number | null;
+  error?: string | null;
+}
+
+export interface ClientResourceItem {
+  client_id: number;
+  client_name: string;
+  servers: ServerResourceItem[];
+}
+
+export async function fetchAllResources(): Promise<ClientResourceItem[]> {
+  const res = await api.get("/server-resources");
+  return res.data;
+}
+
+export async function fetchClientResources(clientId: number): Promise<ClientResourceItem> {
+  const res = await api.get(`/server-resources/clients/${clientId}`);
+  return res.data;
+}

@@ -41,12 +41,14 @@ export default function Sidebar() {
       !pathname.startsWith("/dashboard/users") &&
       !pathname.startsWith("/dashboard/repos") &&
       !pathname.startsWith("/dashboard/ssl") &&
-      !pathname.startsWith("/dashboard/app-logs"));
+      !pathname.startsWith("/dashboard/app-logs") &&
+      !pathname.startsWith("/dashboard/resources"));
   const isAlertsActive = pathname.startsWith("/dashboard/alerts");
   const isReposActive = pathname.startsWith("/dashboard/repos");
   const isSslActive = pathname.startsWith("/dashboard/ssl");
   const isTerminalActive = pathname.startsWith("/dashboard/terminal");
   const isAppLogsActive = pathname.startsWith("/dashboard/app-logs");
+  const isResourcesActive = pathname.startsWith("/dashboard/resources");
 
   return (
     <aside className="w-56 shrink-0 bg-white border-r border-slate-200 min-h-screen py-6 px-3 hidden sm:block dark:bg-slate-900 dark:border-slate-700">
@@ -144,6 +146,18 @@ export default function Sidebar() {
                   d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
                   clipRule="evenodd"
                 />
+              </svg>
+            }
+          />
+        )}
+        {role === "admin" && (
+          <NavItem
+            href="/dashboard/resources"
+            label="Resources"
+            active={isResourcesActive}
+            icon={
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                <path d="M3 12h2v6H3v-6zm4-4h2v10H7V8zm4-4h2v14h-2V4zm4 7h2v7h-2v-7z" />
               </svg>
             }
           />

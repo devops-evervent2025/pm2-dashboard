@@ -27,11 +27,13 @@ from app.email_utils import send_email
 from app.ssh_manager import list_pm2_processes, SSHConnectionError
 from app.routers.ssl_dashboard import SslDomain
 from app.routers.domain_health import DomainHealthIssue
+from app.routers.server_resources import _collect as _collect_resources
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 CACHE_SECONDS = 90
 SSL_ALERT_HOURS = 24
+RESOURCE_ALERT_THRESHOLD = 85.0
 
 
 class ProcessNotification(BaseModel):
@@ -63,11 +65,21 @@ class DomainDownNotification(BaseModel):
     first_detected_at: Optional[datetime.datetime] = None
 
 
+class ResourceNotification(BaseModel):
+    client_id: Optional[int] = None
+    client_name: Optional[str] = None
+    server_id: int
+    server_name: Optional[str] = None
+    metric: str  # "CPU" / "RAM" / "Disk"
+    percent: float
+
+
 class NotificationSummary(BaseModel):
     total: int
     process_alerts: List[ProcessNotification]
     ssl_alerts: List[SslNotification]
     domain_down_alerts: List[DomainDownNotification]
+    resource_alerts: List[ResourceNotification]
     generated_at: datetime.datetime
     cached: bool
 
@@ -169,6 +181,40 @@ def _collect_domain_down_alerts(db: Session) -> List[DomainDownNotification]:
     return alerts
 
 
+def _collect_resource_alerts(db: Session) -> List[ResourceNotification]:
+    """Runs the same parallel SSH-based CPU/RAM/Disk check used by the
+    Resources page, and flags any server currently at or above
+    RESOURCE_ALERT_THRESHOLD on any of the three metrics."""
+    clients = {c.id: c.name for c in db.query(Client).all()}
+    servers = db.query(Server).all()
+    servers_by_id = {s.id: s for s in servers}
+    alerts: List[ResourceNotification] = []
+
+    results = _collect_resources(servers)
+    for r in results:
+        if r.status != "online":
+            continue
+        server = servers_by_id.get(r.server_id)
+        client_id = server.client_id if server else None
+        client_name = clients.get(client_id, "Unknown") if client_id else "Unknown"
+
+        for metric, value in (
+            ("CPU", r.cpu_percent),
+            ("RAM", r.ram_percent),
+            ("Disk", r.disk_percent),
+        ):
+            if value is not None and value >= RESOURCE_ALERT_THRESHOLD:
+                alerts.append(ResourceNotification(
+                    client_id=client_id,
+                    client_name=client_name,
+                    server_id=r.server_id,
+                    server_name=r.name,
+                    metric=metric,
+                    percent=value,
+                ))
+    return alerts
+
+
 class RecipientCreate(BaseModel):
     email: str
 
@@ -224,7 +270,12 @@ def delete_recipient(
     return {"detail": "Recipient removed"}
 
 
-def _send_new_alert_emails(db: Session, process_alerts: List[ProcessNotification], ssl_alerts: List[SslNotification]):
+def _send_new_alert_emails(
+    db: Session,
+    process_alerts: List[ProcessNotification],
+    ssl_alerts: List[SslNotification],
+    resource_alerts: Optional[List[ResourceNotification]] = None,
+):
     """
     Sends ONE email per genuinely NEW alert (never seen before in
     notification_sent_log), then records it so it's never re-emailed
@@ -269,6 +320,21 @@ def _send_new_alert_emails(db: Session, process_alerts: List[ProcessNotification
             db.add(NotificationSentLog(alert_key=key, alert_type="ssl"))
             db.commit()
 
+    for a in (resource_alerts or []):
+        key = f"resource:{a.server_id}:{a.metric}"
+        if db.query(NotificationSentLog).filter(NotificationSentLog.alert_key == key).first():
+            continue
+        subject = f"[PM2 Dashboard] High {a.metric} usage: {a.server_name}"
+        body = (
+            f"<p><strong>{a.server_name}</strong> ({a.client_name or 'Unknown client'}) "
+            f"is at <strong>{a.percent:.1f}% {a.metric}</strong> usage, above the "
+            f"{RESOURCE_ALERT_THRESHOLD:.0f}% alert threshold.</p>"
+            f"<p>Check the Resources page in PM2 Dashboard for details.</p>"
+        )
+        if send_email(recipients, subject, body):
+            db.add(NotificationSentLog(alert_key=key, alert_type="resource"))
+            db.commit()
+
 
 import datetime as _dt
 import threading as _threading
@@ -293,8 +359,9 @@ def _send_daily_digest():
 
         process_alerts = _collect_process_alerts(db)
         ssl_alerts = _collect_ssl_alerts(db)
+        resource_alerts = _collect_resource_alerts(db)
 
-        if not process_alerts and not ssl_alerts:
+        if not process_alerts and not ssl_alerts and not resource_alerts:
             return  # nothing to report today
 
         rows = []
@@ -310,6 +377,11 @@ def _send_daily_digest():
             rows.append(
                 f"<li><strong>{a.process_name}</strong> on {a.server_name} "
                 f"({a.client_name}) - {a.status}</li>"
+            )
+        for a in resource_alerts:
+            rows.append(
+                f"<li><strong>{a.server_name}</strong> ({a.client_name or 'Unknown client'}) - "
+                f"{a.metric} at {a.percent:.1f}%</li>"
             )
 
         subject = f"[PM2 Dashboard] Daily alert digest - {len(rows)} item(s) need attention"
@@ -355,6 +427,7 @@ def get_notification_summary(
             process_alerts=cached_summary.process_alerts,
             ssl_alerts=cached_summary.ssl_alerts,
             domain_down_alerts=cached_summary.domain_down_alerts,
+            resource_alerts=cached_summary.resource_alerts,
             generated_at=cached_summary.generated_at,
             cached=True,
         )
@@ -362,15 +435,23 @@ def get_notification_summary(
     process_alerts = _collect_process_alerts(db)
     ssl_alerts = _collect_ssl_alerts(db)
     domain_down_alerts = _collect_domain_down_alerts(db)
+    resource_alerts = _collect_resource_alerts(db)
 
     summary = NotificationSummary(
-        total=len(process_alerts) + len(ssl_alerts) + len(domain_down_alerts),
+        total=len(process_alerts) + len(ssl_alerts) + len(domain_down_alerts) + len(resource_alerts),
         process_alerts=process_alerts,
         ssl_alerts=ssl_alerts,
         domain_down_alerts=domain_down_alerts,
+        resource_alerts=resource_alerts,
         generated_at=datetime.datetime.utcnow(),
         cached=False,
     )
     _cache["data"] = summary
     _cache["at"] = now
+
+    # Only resource alerts (CPU/RAM/Disk >= threshold) are wired to real-time
+    # email for now - process/SSL real-time emailing stays inactive, unchanged
+    # from before (they're still covered by the daily digest at 9am).
+    _send_new_alert_emails(db, [], [], resource_alerts)
+
     return summary
