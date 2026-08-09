@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { api, ClientItem, K8sClusterItem } from "@/lib/api";
+import { api, K8sClientItem, K8sClusterItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import K8sClusterCard from "@/components/K8sClusterCard";
@@ -12,7 +12,7 @@ export default function K8sClientClustersPage() {
   const { role, isLoading } = useAuth();
   const router = useRouter();
 
-  const [client, setClient] = useState<ClientItem | null>(null);
+  const [client, setClient] = useState<K8sClientItem | null>(null);
   const [clusters, setClusters] = useState<K8sClusterItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -22,7 +22,7 @@ export default function K8sClientClustersPage() {
     setLoading(true);
     try {
       const [clientRes, clustersRes] = await Promise.all([
-        api.get<ClientItem>(`/clients/${clientId}`),
+        api.get<K8sClientItem>(`/k8s-clients/${clientId}`),
         api.get<K8sClusterItem[]>("/k8s-clusters", { params: { client_id: clientId } }),
       ]);
       setClient(clientRes.data);

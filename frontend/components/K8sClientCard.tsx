@@ -1,8 +1,40 @@
 "use client";
 import Link from "next/link";
-import { ClientItem } from "@/lib/api";
+import { useState } from "react";
+import { K8sClientItem, api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
-export default function K8sClientCard({ client }: { client: ClientItem }) {
+export default function K8sClientCard({
+  client,
+  onDeleted,
+}: {
+  client: K8sClientItem;
+  onDeleted?: () => void;
+}) {
+  const { role } = useAuth();
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (
+      !confirm(
+        `Delete client "${client.name}"? This will also delete all ${client.cluster_count} of its cluster(s). This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await api.delete(`/k8s-clients/${client.id}`);
+      onDeleted?.();
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Failed to delete client.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <Link
       href={`/dashboard/k8s/${client.id}`}
@@ -11,13 +43,29 @@ export default function K8sClientCard({ client }: { client: ClientItem }) {
       data-aos-once="true"
       className="card p-5 flex flex-col gap-2 group"
     >
-      <h3 className="font-semibold text-slate-800">{client.name}</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-slate-800">{client.name}</h3>
+        <span className="badge bg-brand-50 text-brand-600">
+          {client.cluster_count} cluster{client.cluster_count === 1 ? "" : "s"}
+        </span>
+      </div>
       {client.description && (
         <p className="text-sm text-slate-500 line-clamp-2">{client.description}</p>
       )}
-      <span className="text-xs text-slate-400">
-        Added {new Date(client.created_at).toLocaleDateString()}
-      </span>
+      <div className="flex items-center justify-between mt-1">
+        <span className="text-xs text-slate-400">
+          Added {new Date(client.created_at).toLocaleDateString()}
+        </span>
+        {role === "admin" && (
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="text-xs text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            {deleting ? "Deleting..." : "Delete"}
+          </button>
+        )}
+      </div>
     </Link>
   );
 }

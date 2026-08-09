@@ -35,6 +35,7 @@ logger = logging.getLogger("domain_health")
 
 CHECK_INTERVAL_SECONDS = 60
 ALERT_STATUS_CODES = {500, 502, 403}
+SUSTAINED_ALERT_THRESHOLD_SECONDS = 180
 MAX_PARALLEL_HTTP = 20
 
 
@@ -47,6 +48,7 @@ class DomainHealthIssue(Base):
     status_code = Column(Integer, nullable=False)
     first_detected_at = Column(DateTime, default=datetime.datetime.utcnow)
     last_checked_at = Column(DateTime, default=datetime.datetime.utcnow)
+    alert_sent = Column(String(10), default="no")
 
 
 class DomainHealthIssueOut(BaseModel):
@@ -150,7 +152,6 @@ def _check_and_store_domain_health(db: Session):
     now = datetime.datetime.utcnow()
     existing_issues = {i.domain: i for i in db.query(DomainHealthIssue).all()}
 
-    # New or changed-status issues -> upsert + email
     for domain, status_code in bad_this_cycle.items():
         srv = servers.get(domain_rows[domain].server_id)
         srv_name = srv.name if srv else None
@@ -158,34 +159,39 @@ def _check_and_store_domain_health(db: Session):
 
         existing = existing_issues.get(domain)
         if existing is None:
-            db.add(DomainHealthIssue(
+            existing = DomainHealthIssue(
                 server_id=domain_rows[domain].server_id, domain=domain,
                 status_code=status_code, first_detected_at=now, last_checked_at=now,
-            ))
+                alert_sent="no",
+            )
+            db.add(existing)
             db.commit()
-            logger.info(f"[domain_health] NEW issue: {domain} -> {status_code}")
-            _send_domain_down_email(db, srv_name, cli_name, domain, status_code)
-        elif existing.status_code != status_code:
+            logger.info(f"[domain_health] NEW issue: {domain} -> {status_code} (waiting to see if sustained)")
+        else:
+            if existing.status_code != status_code:
+                logger.info(f"[domain_health] status changed while down: {domain} -> {status_code}")
             existing.status_code = status_code
             existing.last_checked_at = now
             db.commit()
-            logger.info(f"[domain_health] status changed: {domain} -> {status_code}")
-            _send_domain_down_email(db, srv_name, cli_name, domain, status_code)
-        else:
-            existing.last_checked_at = now
-            db.commit()
 
-    # Recovered - no longer in the bad set. Send exactly one "back up"
-    # email, then remove the issue row (a future recurrence is treated as
-    # new and alerts again, same one-email-per-state-change principle as
-    # the down alert).
+        if existing.alert_sent != "yes":
+            elapsed = (now - existing.first_detected_at).total_seconds()
+            if elapsed >= SUSTAINED_ALERT_THRESHOLD_SECONDS:
+                logger.info(f"[domain_health] sustained {elapsed:.0f}s -> emailing: {domain} -> {existing.status_code}")
+                _send_domain_down_email(db, srv_name, cli_name, domain, existing.status_code)
+                existing.alert_sent = "yes"
+                db.commit()
+
     for domain, existing in existing_issues.items():
         if domain not in bad_this_cycle:
-            srv = servers.get(existing.server_id)
-            srv_name = srv.name if srv else None
-            cli_name = clients.get(srv.client_id) if srv else None
-            logger.info(f"[domain_health] recovered: {domain} - clearing issue")
-            _send_domain_recovered_email(db, srv_name, cli_name, domain, existing.status_code)
+            if existing.alert_sent == "yes":
+                srv = servers.get(existing.server_id)
+                srv_name = srv.name if srv else None
+                cli_name = clients.get(srv.client_id) if srv else None
+                logger.info(f"[domain_health] recovered: {domain} - clearing issue")
+                _send_domain_recovered_email(db, srv_name, cli_name, domain, existing.status_code)
+            else:
+                logger.info(f"[domain_health] blip cleared before threshold, no email needed: {domain}")
             db.delete(existing)
     db.commit()
 

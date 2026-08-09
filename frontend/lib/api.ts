@@ -127,3 +127,44 @@ export async function fetchClientResources(clientId: number): Promise<ClientReso
   const res = await api.get(`/server-resources/clients/${clientId}`);
   return res.data;
 }
+
+// ---- Docker Containers ----
+export interface DockerContainerItem {
+  id: string;
+  name: string;
+  image: string;
+  status: string;
+  state: string;
+  ports?: string;
+  created?: string;
+}
+
+// ---- Kubernetes ----
+export type K8sConnectionType = "ssh_kubectl" | "kubeconfig" | "api_token";
+
+export interface K8sClusterItem {
+  id: number;
+  client_id: number;
+  name: string;
+  environment?: string | null;
+  connection_type: K8sConnectionType;
+  online?: boolean | null;
+}
+
+export interface K8sPodItem {
+  name: string;
+  namespace: string;
+  phase: string;
+  node_name?: string | null;
+  restarts: number;
+  created: string;
+}
+
+
+export interface K8sClientItem {
+  id: number;
+  name: string;
+  description?: string | null;
+  cluster_count: number;
+  created_at: string;
+}

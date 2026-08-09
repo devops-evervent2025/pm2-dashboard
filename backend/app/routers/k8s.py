@@ -3,12 +3,57 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth import get_current_user, require_admin
-from app.models import User, Client
-from app.k8s_models import K8sCluster, K8sConnectionTypeEnum
-from app.k8s_schemas import K8sClusterCreate, K8sClusterOut, K8sPodOut, K8sPodActionRequest
+from app.models import User
+from app.k8s_models import K8sCluster, K8sClient, K8sConnectionTypeEnum
+from app.k8s_schemas import (
+    K8sClusterCreate, K8sClusterOut, K8sPodOut, K8sPodActionRequest,
+    K8sClientCreate, K8sClientOut,
+)
 from app.k8s_manager import list_pods, pod_action, check_online, K8sConnectionError
 
+client_router = APIRouter(prefix="/k8s-clients", tags=["k8s"])
 router = APIRouter(prefix="/k8s-clusters", tags=["k8s"])
+
+
+@client_router.get("", response_model=list[K8sClientOut])
+def list_k8s_clients(db: Session = Depends(get_db), _user: User = Depends(get_current_user)):
+    out = []
+    for c in db.query(K8sClient).all():
+        out.append(K8sClientOut(
+            id=c.id, name=c.name, description=c.description,
+            cluster_count=len(c.clusters), created_at=c.created_at.isoformat(),
+        ))
+    return out
+
+
+@client_router.post("", response_model=K8sClientOut)
+def create_k8s_client(payload: K8sClientCreate, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    existing = db.query(K8sClient).filter(K8sClient.name == payload.name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="A Kubernetes client with this name already exists")
+    client = K8sClient(name=payload.name, description=payload.description, created_by=admin.id)
+    db.add(client)
+    db.commit()
+    db.refresh(client)
+    return K8sClientOut(id=client.id, name=client.name, description=client.description, cluster_count=0, created_at=client.created_at.isoformat())
+
+
+@client_router.get("/{client_id}", response_model=K8sClientOut)
+def get_k8s_client(client_id: int, db: Session = Depends(get_db), _user: User = Depends(get_current_user)):
+    c = db.query(K8sClient).filter(K8sClient.id == client_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Kubernetes client not found")
+    return K8sClientOut(id=c.id, name=c.name, description=c.description, cluster_count=len(c.clusters), created_at=c.created_at.isoformat())
+
+
+@client_router.delete("/{client_id}")
+def delete_k8s_client(client_id: int, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    c = db.query(K8sClient).filter(K8sClient.id == client_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Kubernetes client not found")
+    db.delete(c)
+    db.commit()
+    return {"detail": "Kubernetes client deleted"}
 
 ALLOWED_ACTIONS = {"delete"}
 
@@ -30,9 +75,9 @@ def list_clusters(client_id: int | None = None, db: Session = Depends(get_db), _
 
 @router.post("", response_model=K8sClusterOut)
 def create_cluster(payload: K8sClusterCreate, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
-    client = db.query(Client).filter(Client.id == payload.client_id).first()
+    client = db.query(K8sClient).filter(K8sClient.id == payload.client_id).first()
     if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
+        raise HTTPException(status_code=404, detail="Kubernetes client not found")
     try:
         conn_type = K8sConnectionTypeEnum(payload.connection_type)
     except ValueError:
