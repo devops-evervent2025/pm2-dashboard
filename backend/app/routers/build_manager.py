@@ -402,17 +402,22 @@ def _git_repo_names_batch(server, base_path: str, folders) -> dict:
     return result
 
 
-def _scan_one_target(sp, server_snapshot):
+def _scan_one_target(sp_id, base_path, server_id, server_snapshot):
     """Pure network work for ONE scan path - no DB writes here, so this
-    is safe to run concurrently across many servers at once. Returns
-    (scan_path_id, environment, list_of_row_dicts, error_or_None)."""
-    environment = _branch_from_base_path(sp.base_path)
+    is safe to run concurrently across many servers at once. Takes only
+    plain Python values (int/str), NEVER a SQLAlchemy ORM object -
+    passing an ORM object into a worker thread let that thread touch the
+    same Session the main thread was using for commits, corrupting it
+    ("invalid transaction, please rollback") and silently killing the
+    entire scan. Returns (scan_path_id, environment, list_of_row_dicts,
+    error_or_None)."""
+    environment = _branch_from_base_path(base_path)
     try:
         processes = list_pm2_processes(server_snapshot)
     except SSHConnectionError as exc:
-        return sp.id, environment, [], str(exc)
+        return sp_id, environment, [], str(exc)
 
-    prefix = sp.base_path.rstrip("/") + "/"
+    prefix = base_path.rstrip("/") + "/"
     folder_procs: dict = {}
     for proc in processes:
         cwd = proc.get("cwd")
@@ -422,12 +427,12 @@ def _scan_one_target(sp, server_snapshot):
         if folder:
             folder_procs.setdefault(folder, []).append(proc)
 
-    repo_names = _git_repo_names_batch(server_snapshot, sp.base_path, list(folder_procs.keys()))
+    repo_names = _git_repo_names_batch(server_snapshot, base_path, list(folder_procs.keys()))
 
     now = datetime.datetime.utcnow()
     rows = []
     for folder, procs in folder_procs.items():
-        full_path = f"{sp.base_path.rstrip('/')}/{folder}"
+        full_path = f"{base_path.rstrip('/')}/{folder}"
         repo_name = repo_names.get(folder) or folder
         for proc in procs:
             rows.append({
@@ -435,7 +440,7 @@ def _scan_one_target(sp, server_snapshot):
                 "pm2_process_name": proc.get("name"), "pm2_status": proc.get("status"),
                 "last_scanned_at": now,
             })
-    return sp.id, environment, rows, None
+    return sp_id, environment, rows, None
 
 
 _deploy_scan_status = {
@@ -461,35 +466,56 @@ def _run_deploy_scan():
         _deploy_scan_status["total"] = len(scan_paths)
         _deploy_scan_status["scanned"] = 0
 
+        # Extract everything into plain Python values BEFORE handing
+        # anything to worker threads - never pass a live ORM object
+        # (like `sp`) across a thread boundary while its parent Session
+        # is still doing commits on the main thread.
         targets = []
         for sp in scan_paths:
             server = db.query(Server).filter(Server.id == sp.server_id).first()
             if server:
-                targets.append((sp, _snapshot_server(server)))
+                targets.append({
+                    "sp_id": sp.id, "base_path": sp.base_path, "server_id": server.id,
+                    "snapshot": _snapshot_server(server),
+                })
             else:
                 db.query(DeployTargetCache).filter(DeployTargetCache.scan_path_id == sp.id).delete()
                 _deploy_scan_status["scanned"] += 1
         db.commit()
 
         with ThreadPoolExecutor(max_workers=DEPLOY_SCAN_MAX_WORKERS) as pool:
-            futures = {pool.submit(_scan_one_target, sp, snap): sp for sp, snap in targets}
+            futures = {
+                pool.submit(_scan_one_target, t["sp_id"], t["base_path"], t["server_id"], t["snapshot"]): t
+                for t in targets
+            }
             for future in as_completed(futures):
-                sp = futures[future]
+                t = futures[future]
                 try:
                     sp_id, environment, rows, err = future.result()
                 except Exception as exc:  # noqa: BLE001
-                    sp_id, rows, err = sp.id, [], str(exc)
+                    sp_id, rows, err = t["sp_id"], [], str(exc)
 
-                db.query(DeployTargetCache).filter(DeployTargetCache.scan_path_id == sp_id).delete()
-                if not err:
-                    for row in rows:
-                        db.add(DeployTargetCache(
-                            scan_path_id=sp_id, server_id=sp.server_id, environment=_branch_from_base_path(sp.base_path),
-                            repo_name=row["repo_name"], folder_name=row["folder_name"], full_path=row["full_path"],
-                            pm2_process_name=row["pm2_process_name"], pm2_status=row["pm2_status"],
-                            last_scanned_at=row["last_scanned_at"],
-                        ))
-                db.commit()
+                # Each scan path gets its OWN try/except + rollback. Without
+                # this, one bad target (bad data, weird repo name, whatever)
+                # would raise mid-loop, propagate past the whole for-loop,
+                # leave the shared session in SQLAlchemy's "invalid
+                # transaction" state, and silently kill the ENTIRE scan for
+                # every other server too - which is exactly what was
+                # happening (scanned stuck at 0 despite 64 valid targets).
+                try:
+                    db.query(DeployTargetCache).filter(DeployTargetCache.scan_path_id == sp_id).delete()
+                    if not err:
+                        for row in rows:
+                            db.add(DeployTargetCache(
+                                scan_path_id=sp_id, server_id=t["server_id"], environment=_branch_from_base_path(t["base_path"]),
+                                repo_name=row["repo_name"], folder_name=row["folder_name"], full_path=row["full_path"],
+                                pm2_process_name=row["pm2_process_name"], pm2_status=row["pm2_status"],
+                                last_scanned_at=row["last_scanned_at"],
+                            ))
+                    db.commit()
+                except Exception as exc:  # noqa: BLE001
+                    db.rollback()
+                    print(f"[deploy-scan] scan_path_id={sp_id} ({t['base_path']}) failed: {exc}")
                 _deploy_scan_status["scanned"] += 1
     except Exception as exc:  # noqa: BLE001
         _deploy_scan_status["error"] = str(exc)
