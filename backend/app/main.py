@@ -6,7 +6,8 @@ from app.database import Base, engine
 from app import notification_models  # noqa: F401
 from app import otp_models  # noqa: F401
 from app import server_resource_models  # noqa: F401
-from app.routers import auth, clients, servers, processes, logs, system, remote_repos, terminal, ssl_dashboard, notifications, activity_log, domain_health, server_logs, replication_health, log_alerts, server_resources
+from app import build_run_models  # noqa: F401
+from app.routers import auth, clients, servers, processes, logs, system, remote_repos, terminal, ssl_dashboard, notifications, activity_log, domain_health, server_logs, replication_health, log_alerts, server_resources, build_manager
 
 from app.routers.ssl_dashboard import start_periodic_ssl_scan
 from app.routers.notifications import start_daily_digest_scheduler
@@ -44,6 +45,7 @@ app.include_router(server_logs.router)
 app.include_router(replication_health.router)
 app.include_router(log_alerts.router)
 app.include_router(server_resources.router)
+app.include_router(build_manager.router)
 
 
 @app.on_event("startup")

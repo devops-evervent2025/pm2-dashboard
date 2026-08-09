@@ -53,6 +53,19 @@ class SslDomainOut(BaseModel):
         from_attributes = True
 
 
+class SslDomainCreate(BaseModel):
+    server_id: int
+    domain: str
+    cert_path: Optional[str] = None
+
+
+class ServerOption(BaseModel):
+    id: int
+    name: str
+    client_id: Optional[int] = None
+    client_name: Optional[str] = None
+
+
 class SslScanResponse(BaseModel):
     server_id: int
     server_name: str
@@ -353,6 +366,65 @@ def list_domains(db: Session = Depends(get_db), _admin: User = Depends(require_a
         cli_name = clients.get(cli_id) if cli_id else None
         out.append(_to_out(r, srv_name, cli_id, cli_name))
     return out
+
+
+@router.get("/servers", response_model=List[ServerOption])
+def list_servers_for_domain_add(db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    """Lightweight server picklist (id/name/client) used by the "Add
+    domain" modal on the frontend so an admin can pick which server a
+    manually-added domain belongs to."""
+    servers = db.query(Server).all()
+    clients = {c.id: c.name for c in db.query(Client).all()}
+    return [
+        ServerOption(
+            id=s.id,
+            name=s.name,
+            client_id=s.client_id,
+            client_name=clients.get(s.client_id) if s.client_id else None,
+        )
+        for s in servers
+    ]
+
+
+@router.post("/domains", response_model=SslDomainOut, status_code=201)
+def create_domain(payload: SslDomainCreate, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    """Manually add a domain to track for a given server. Runs the same
+    live TLS check (with SSH fallback) used by scanning, so a manually
+    added domain immediately shows real expiry data instead of blanks."""
+    server = _get_server_or_404(payload.server_id, db)
+    domain = payload.domain.strip().lower()
+    if not domain:
+        raise HTTPException(status_code=400, detail="Domain cannot be empty")
+
+    existing = (
+        db.query(SslDomain)
+        .filter(SslDomain.server_id == server.id, SslDomain.domain == domain)
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="This domain is already tracked for this server")
+
+    expires_at = _check_cert_live(domain)
+    if expires_at is None:
+        expires_at = _check_cert_via_ssh(server, domain)
+
+    row = SslDomain(
+        server_id=server.id,
+        domain=domain,
+        cert_path=(payload.cert_path or None),
+        expires_at=expires_at,
+        last_scanned_at=datetime.datetime.utcnow(),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+
+    client_name = None
+    if server.client_id:
+        client = db.query(Client).filter(Client.id == server.client_id).first()
+        client_name = client.name if client else None
+
+    return _to_out(row, server.name, server.client_id, client_name)
 
 
 @router.post("/scan/{server_id}", response_model=SslScanResponse)

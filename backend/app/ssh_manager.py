@@ -153,6 +153,7 @@ def list_pm2_processes(server: Server) -> List[dict]:
             "restarts": pm2_env.get("restart_time"),
             "instances": pm2_env.get("instances", 1),
             "exec_mode": pm2_env.get("exec_mode"),
+            "cwd": pm2_env.get("pm_cwd") or pm2_env.get("cwd"),
         })
     return processes
 
@@ -190,32 +191,6 @@ def stream_logs(server: Server, process_name: str) -> Generator[str, None, None]
             channel.close()
         except Exception:
             pass
-        client.close()
-
-
-def run_restricted_command(server: Server, command: str, timeout: int = 30) -> dict:
-    """
-    Like run_command, but returns stdout/stderr/exit_status separately
-    instead of raising on stderr output - used by the restricted curl-only
-    terminal feature. The caller is responsible for validating `command`
-    before calling this.
-    """
-    client = _connect(server)
-    try:
-        wrapped = f"bash -lc {shlex.quote(command)}"
-        stdin, stdout, stderr = client.exec_command(wrapped, timeout=timeout)
-        try:
-            out = stdout.read().decode(errors="ignore")
-            err = stderr.read().decode(errors="ignore")
-            exit_status = stdout.channel.recv_exit_status()
-        except (socket.timeout, paramiko.buffered_pipe.PipeTimeout):
-            return {
-                "stdout": "",
-                "stderr": f"Command timed out after {timeout}s (remote host slow or unreachable).",
-                "exit_status": -1,
-            }
-        return {"stdout": out, "stderr": err, "exit_status": exit_status}
-    finally:
         client.close()
 
 
@@ -281,4 +256,70 @@ def stream_docker_logs(server: Server, container_name: str) -> Generator[str, No
             else:
                 yield None
     finally:
+        client.close()
+
+
+# ---------------- Build Manager ----------------
+
+def stream_build(server: Server, full_path: str, branch_name: str) -> Generator[str, None, None]:
+    """Streams live output of, on the remote server:
+        cd <full_path> && git fetch origin &&
+        (git checkout <branch_name> || git checkout -b <branch_name> origin/<branch_name>) &&
+        git pull origin <branch_name> && npm i -f && npm run build
+
+    branch_name is NOT detected from whatever the folder currently has
+    checked out - it's the folder's own name under base_path (e.g.
+    ".../frontend/Development" -> branch "Development", ".../backend/Uat"
+    -> branch "Uat"). A bare `git pull` fails outright if the folder is
+    in detached HEAD or has no upstream tracking set, which is exactly
+    the failure this was hitting. Explicitly fetching, checking out (or
+    creating a local tracking branch if it doesn't exist locally yet),
+    then pulling that named branch avoids that failure mode. If the
+    branch genuinely doesn't exist on the remote, that error surfaces
+    clearly in the streamed output instead of silently building whatever
+    was already checked out.
+    """
+    client = _connect(server)
+    try:
+        transport = client.get_transport()
+        channel = transport.open_session()
+        channel.get_pty()
+        branch_q = shlex.quote(branch_name)
+        script = (
+            f"cd {shlex.quote(full_path)} && "
+            f"{_path_prefix(server)}"
+            f"echo '--- expected branch (from folder): {branch_name} ---' && "
+            f"git fetch origin && "
+            f"(git checkout {branch_q} || git checkout -b {branch_q} origin/{branch_q}) && "
+            f"echo '--- discarding any local changes, hard-syncing to origin/{branch_name} ---' && "
+            f"git reset --hard origin/{branch_q} && "
+            f"git clean -fd && "
+            f"npm i -f && "
+            f"npm run build"
+        )
+        channel.exec_command(f"bash -lc {shlex.quote(script)}")
+        buffer = b""
+        while True:
+            if channel.recv_ready():
+                chunk = channel.recv(4096)
+                if not chunk:
+                    break
+                buffer += chunk
+                while b"\n" in buffer:
+                    line, buffer = buffer.split(b"\n", 1)
+                    yield line.decode(errors="ignore")
+            elif channel.exit_status_ready():
+                if buffer:
+                    yield buffer.decode(errors="ignore")
+                    buffer = b""
+                exit_status = channel.recv_exit_status()
+                yield f"__EXIT__:{exit_status}"
+                break
+            else:
+                yield None
+    finally:
+        try:
+            channel.close()
+        except Exception:
+            pass
         client.close()

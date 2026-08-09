@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
+import AddDomainModal from "@/components/AddDomainModal";
 
 interface SslDomainItem {
   id: number;
@@ -46,6 +47,7 @@ function statusLabel(days: number | null | undefined) {
 export default function SslDashboardPage() {
   const { role, isLoading } = useAuth();
   const router = useRouter();
+  const isAdmin = role === "admin";
 
   const [domains, setDomains] = useState<SslDomainItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,6 +57,8 @@ export default function SslDashboardPage() {
   const [scanJustSucceeded, setScanJustSucceeded] = useState(false);
   const [showAllOk, setShowAllOk] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<number | null | "unassigned">(null);
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const elapsedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -148,6 +152,21 @@ export default function SslDashboardPage() {
     pollStatus();
   }
 
+  async function handleDelete(id: number, domainName: string) {
+    if (!confirm(`Remove "${domainName}" from tracking? This only removes it from the dashboard, not the server.`)) {
+      return;
+    }
+    setDeletingId(id);
+    try {
+      await api.delete(`/ssl/domains/${id}`);
+      setDomains((prev) => prev.filter((d) => d.id !== id));
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || "Failed to delete domain");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   const threshold = 30;
 
   const clientGroups = useMemo(() => {
@@ -198,14 +217,22 @@ export default function SslDashboardPage() {
               Scans also run automatically every 2 hours.
             </p>
           </div>
-          {role === "admin" && (
-            <button
-              className={`btn-primary text-sm ${scanStatus?.running ? "cursor-not-allowed opacity-70" : ""}`}
-              onClick={scanAll}
-              disabled={!!scanStatus?.running}
-            >
-              {scanButtonLabel}
-            </button>
+          {isAdmin && (
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                className="text-sm px-4 py-2 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50"
+                onClick={() => setAddModalOpen(true)}
+              >
+                + Add domain
+              </button>
+              <button
+                className={`btn-primary text-sm ${scanStatus?.running ? "cursor-not-allowed opacity-70" : ""}`}
+                onClick={scanAll}
+                disabled={!!scanStatus?.running}
+              >
+                {scanButtonLabel}
+              </button>
+            </div>
           )}
         </div>
 
@@ -215,8 +242,8 @@ export default function SslDashboardPage() {
         {!loading && !error && domains.length === 0 && (
           <div className="card p-10 text-center text-slate-500">
             No domains scanned yet.{" "}
-            {role === "admin"
-              ? 'Click "Refresh all" above to scan your servers for nginx-configured SSL domains.'
+            {isAdmin
+              ? 'Click "Refresh all" above to scan your servers for nginx-configured SSL domains, or add one manually.'
               : "Ask an admin to run a scan."}
           </div>
         )}
@@ -249,15 +276,26 @@ export default function SslDashboardPage() {
           </div>
         )}
 
-        {/* CLIENT DETAIL VIEW */}
+        {/* CLIENT DETAIL VIEW — dynamic table */}
         {!loading && selectedGroup && (
           <div>
-            <button
-              onClick={() => setSelectedClientId(null)}
-              className="text-sm text-brand-600 hover:text-brand-800 mb-4 flex items-center gap-1"
-            >
-              ← Back to all clients
-            </button>
+            <div className="flex items-center justify-between mb-4">
+              <button
+                onClick={() => setSelectedClientId(null)}
+                className="text-sm text-brand-600 hover:text-brand-800 flex items-center gap-1"
+              >
+                ← Back to all clients
+              </button>
+              {isAdmin && (
+                <button
+                  className="text-sm px-4 py-2 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50"
+                  onClick={() => setAddModalOpen(true)}
+                >
+                  + Add domain to {selectedGroup.clientName}
+                </button>
+              )}
+            </div>
+
             <h2 className="text-lg font-semibold text-slate-800 mb-3">{selectedGroup.clientName}</h2>
 
             <label className="flex items-center gap-2 text-sm text-slate-600 mb-4">
@@ -275,30 +313,68 @@ export default function SslDashboardPage() {
               </div>
             )}
 
-            <div className="space-y-2">
-              {visibleInSelected.map((d) => (
-                <div key={d.id} className="card p-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-slate-800">{d.domain}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      {d.server_name} {d.cert_path && `· ${d.cert_path}`}
-                    </p>
-                    {d.expires_at && (
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Expires {new Date(d.expires_at).toLocaleDateString()} · last checked{" "}
-                        {d.last_scanned_at ? new Date(d.last_scanned_at).toLocaleString() : "never"}
-                      </p>
-                    )}
-                  </div>
-                  <span className={`badge shrink-0 ml-4 ${statusStyle(d.days_remaining)}`}>
-                    {statusLabel(d.days_remaining)}
-                  </span>
-                </div>
-              ))}
-            </div>
+            {visibleInSelected.length > 0 && (
+              <div className="card overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-left text-slate-500">
+                      <th className="px-4 py-3 font-medium">Domain</th>
+                      <th className="px-4 py-3 font-medium">Server</th>
+                      <th className="px-4 py-3 font-medium">Cert path</th>
+                      <th className="px-4 py-3 font-medium">Expires</th>
+                      <th className="px-4 py-3 font-medium">Last checked</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                      {isAdmin && <th className="px-4 py-3 font-medium text-right">Actions</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleInSelected.map((d) => (
+                      <tr key={d.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                        <td className="px-4 py-3 font-medium text-slate-800">{d.domain}</td>
+                        <td className="px-4 py-3 text-slate-600">{d.server_name || "—"}</td>
+                        <td className="px-4 py-3 text-slate-500 max-w-[220px] truncate" title={d.cert_path || ""}>
+                          {d.cert_path || "—"}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {d.expires_at ? new Date(d.expires_at).toLocaleDateString() : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-slate-500">
+                          {d.last_scanned_at ? new Date(d.last_scanned_at).toLocaleString() : "never"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`badge ${statusStyle(d.days_remaining)}`}>
+                            {statusLabel(d.days_remaining)}
+                          </span>
+                        </td>
+                        {isAdmin && (
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              onClick={() => handleDelete(d.id, d.domain)}
+                              disabled={deletingId === d.id}
+                              className="text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
+                            >
+                              {deletingId === d.id ? "Removing…" : "Delete"}
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </main>
+
+      {isAdmin && (
+        <AddDomainModal
+          open={addModalOpen}
+          onClose={() => setAddModalOpen(false)}
+          onAdded={fetchDomains}
+          clientId={selectedClientId}
+        />
+      )}
     </div>
   );
 }

@@ -71,6 +71,7 @@ export interface PM2ProcessItem {
   restarts?: number | null;
   instances?: number | null;
   exec_mode?: string | null;
+  cwd?: string | null;
 }
 
 export interface UserItem {

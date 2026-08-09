@@ -122,6 +122,7 @@ class PM2Process(BaseModel):
     restarts: Optional[int] = None
     instances: Optional[int] = None
     exec_mode: Optional[str] = None
+    cwd: Optional[str] = None
 
 
 class ProcessActionRequest(BaseModel):

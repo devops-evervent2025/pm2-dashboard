@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { useState } from "react";
+import QuickDeployModal from "@/components/QuickDeployModal";
 
 function NavItem({
   href,
@@ -33,6 +35,7 @@ function NavItem({
 export default function Sidebar() {
   const pathname = usePathname();
   const { role } = useAuth();
+  const [showQuickDeploy, setShowQuickDeploy] = useState(false);
 
   const isDashboardActive =
     pathname === "/dashboard" ||
@@ -162,7 +165,22 @@ export default function Sidebar() {
             }
           />
         )}
+        {(role === "admin" || role === "developer") && (
+          <button
+            type="button"
+            onClick={() => setShowQuickDeploy(true)}
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors text-slate-600 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+          >
+            <span className="w-5 h-5 flex items-center justify-center shrink-0">
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                <path d="M10 2a1 1 0 01.894.553l7 14A1 1 0 0117 18H3a1 1 0 01-.894-1.447l7-14A1 1 0 0110 2z" />
+              </svg>
+            </span>
+            Quick Deploy
+          </button>
+        )}
       </nav>
+      {showQuickDeploy && <QuickDeployModal onClose={() => setShowQuickDeploy(false)} />}
     </aside>
   );
 }
