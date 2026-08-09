@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     DEFAULT_ADMIN_PASSWORD: str = "admin"
     DEFAULT_ADMIN_EMAIL: str = "admin@example.com"
 
+    # Email OTP verification - when False, login is username+password
+    # only and the /auth/otp/verify step is skipped entirely, no email
+    # is sent. When True (default), the existing 2-step flow applies.
+    REQUIRE_EMAIL_OTP: bool = True
+
     # SSH defaults
     SSH_DEFAULT_PORT: int = 22
     SSH_DEFAULT_USERNAME: str = "root"

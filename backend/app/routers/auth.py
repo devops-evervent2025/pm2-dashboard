@@ -15,6 +15,7 @@ from app.schemas import Token, UserOut, UserCreate, UserUpdate
 from app.models import User, SecretRevealAudit, CurlCommandAudit, ProcessLogAudit
 from app.otp_models import LoginOtp
 from app.email_utils import send_email
+from app.config import get_settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -99,6 +100,21 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    settings = get_settings()
+
+    # When email OTP is switched off in .env, skip straight to a token -
+    # same response shape (otp_required=False) the frontend already
+    # handles for the "recently verified" grace-period case, so no
+    # frontend change is needed for this toggle.
+    if not settings.REQUIRE_EMAIL_OTP:
+        token = create_access_token({"sub": user.username, "role": user.role.value})
+        return LoginResponse(
+            otp_required=False,
+            username=user.username,
+            access_token=token,
+            role=user.role.value,
+        )
+
     if not user.email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
