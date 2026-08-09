@@ -14,6 +14,7 @@ from app.routers.notifications import start_daily_digest_scheduler
 from app.routers.domain_health import start_periodic_domain_health_check
 from app.routers.replication_health import start_periodic_replication_health_check
 from app.routers.log_alerts import start_periodic_log_alert_check
+from app.routers.build_manager import start_deploy_scan_scheduler
 from app.init_db import bootstrap_admin
 from app.auto_migrate import run_auto_migrations
 
@@ -56,6 +57,7 @@ def on_startup():
     bootstrap_admin()
     start_periodic_ssl_scan()
     start_daily_digest_scheduler()
+    start_deploy_scan_scheduler()
     start_periodic_domain_health_check()
     start_periodic_replication_health_check()
     start_periodic_log_alert_check()

@@ -23,3 +23,4 @@ logs/
 # os
 .DS_Store
 *.bak.*
+backend/*.db
