@@ -22,6 +22,14 @@ class EnvironmentEnum(str, enum.Enum):
     Other = "Other"
 
 
+class ConnectionTypeEnum(str, enum.Enum):
+    def __str__(self):
+        return str(self.value)
+
+    ssh = "ssh"
+    docker_api = "docker_api"
+
+
 def detect_environment(*hints: str) -> EnvironmentEnum:
     joined = " ".join([h or "" for h in hints]).lower()
     if any(k in joined for k in ("prod", "production", "live")):
@@ -70,6 +78,7 @@ class Server(Base):
     pm2_path = Column(String(500), nullable=True)
     environment = Column(Enum(EnvironmentEnum), default=EnvironmentEnum.Other)
     tag = Column(String(100), nullable=True)
+    connection_type = Column(Enum(ConnectionTypeEnum), default=ConnectionTypeEnum.ssh, nullable=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     client = relationship("Client", back_populates="servers")

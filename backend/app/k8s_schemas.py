@@ -50,3 +50,19 @@ class K8sPodOut(BaseModel):
 class K8sPodActionRequest(BaseModel):
     namespace: str
     action: str  # "delete" (start with just this - pods aren't "started/stopped" like PM2/Docker)
+
+
+class K8sClientCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class K8sClientOut(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    cluster_count: int = 0
+    created_at: str
+
+    class Config:
+        from_attributes = True

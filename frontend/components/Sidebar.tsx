@@ -45,7 +45,11 @@ export default function Sidebar() {
       !pathname.startsWith("/dashboard/repos") &&
       !pathname.startsWith("/dashboard/ssl") &&
       !pathname.startsWith("/dashboard/app-logs") &&
-      !pathname.startsWith("/dashboard/resources"));
+      !pathname.startsWith("/dashboard/resources") &&
+      !pathname.startsWith("/dashboard/docker") &&
+      !pathname.startsWith("/dashboard/k8s"));
+  const isDockerDashboardActive = pathname.startsWith("/dashboard/docker");
+  const isK8sDashboardActive = pathname.startsWith("/dashboard/k8s");
   const isAlertsActive = pathname.startsWith("/dashboard/alerts");
   const isReposActive = pathname.startsWith("/dashboard/repos");
   const isSslActive = pathname.startsWith("/dashboard/ssl");
@@ -61,11 +65,31 @@ export default function Sidebar() {
       <nav className="space-y-1">
         <NavItem
           href="/dashboard"
-          label="Dashboard"
+          label="PM2 Dashboard"
           active={isDashboardActive}
           icon={
             <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
               <path d="M3 4a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM11 4a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V4zM3 12a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H4a1 1 0 01-1-1v-4zM11 12a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+            </svg>
+          }
+        />
+        <NavItem
+          href="/dashboard/docker"
+          label="Docker Dashboard"
+          active={isDockerDashboardActive}
+          icon={
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+              <path d="M4 8h2v2H4V8zm3 0h2v2H7V8zm3 0h2v2h-2V8zm3 0h2v2h-2V8zM4 5h2v2H4V5zm3 0h2v2H7V5zm3 0h2v2h-2V5zM2 10.5S2.5 15 10 15s8-4.5 8-4.5-1 1.5-8 1.5-8-1.5-8-1.5z" />
+            </svg>
+          }
+        />
+        <NavItem
+          href="/dashboard/k8s"
+          label="Kubernetes Dashboard"
+          active={isK8sDashboardActive}
+          icon={
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+              <path d="M10 1.5l7.5 4.3v8.4L10 18.5l-7.5-4.3V5.8L10 1.5zM10 3.6L4 7v6l6 3.4 6-3.4V7l-6-3.4zM10 6a4 4 0 100 8 4 4 0 000-8z" />
             </svg>
           }
         />

@@ -38,11 +38,26 @@ class K8sConnectionTypeEnum(str, enum.Enum):
     api_token = "api_token"
 
 
+class K8sClient(Base):
+    """Kubernetes ke liye poori tarah alag client list - PM2/Docker ke
+    `clients` table se koi link nahi. Company/organization group karne ka
+    matlab jo bhi ho, K8s ke liye yahi asli source hai."""
+    __tablename__ = "k8s_clients"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), unique=True, nullable=False, index=True)
+    description = Column(String(500), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    clusters = relationship("K8sCluster", back_populates="client", cascade="all, delete-orphan")
+
+
 class K8sCluster(Base):
     __tablename__ = "k8s_clusters"
 
     id = Column(Integer, primary_key=True, index=True)
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    client_id = Column(Integer, ForeignKey("k8s_clients.id"), nullable=False)
     name = Column(String(255), nullable=False)
     environment = Column(String(50), nullable=True)  # Dev/Prod/Stg/Other, free text - reuses no enum table
     connection_type = Column(Enum(K8sConnectionTypeEnum), nullable=False, default=K8sConnectionTypeEnum.ssh_kubectl)
@@ -67,4 +82,4 @@ class K8sCluster(Base):
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
-    client = relationship("Client")
+    client = relationship("K8sClient", back_populates="clusters")

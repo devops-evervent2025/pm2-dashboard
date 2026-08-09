@@ -230,3 +230,17 @@ class LogTailResponse(BaseModel):
     filename: str
     lines: List[str]
     truncated: bool
+
+
+class DockerContainer(BaseModel):
+    id: str
+    name: str
+    image: str
+    status: str
+    state: str
+    ports: str = ""
+    created: str = ""
+
+
+class DockerActionRequest(BaseModel):
+    action: str  # "start" | "stop" | "restart"
