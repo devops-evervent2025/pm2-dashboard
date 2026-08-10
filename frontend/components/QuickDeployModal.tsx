@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import BuildLogTerminal from "@/components/BuildLogTerminal";
@@ -79,6 +80,10 @@ function jobAggregate(job: Job) {
 
 export default function QuickDeployModal({ onClose }: { onClose: () => void }) {
   const { role } = useAuth();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const canDeploy = role === "admin" || role === "developer";
   const [environments, setEnvironments] = useState<string[]>([]);
   const [environment, setEnvironment] = useState("");
@@ -253,8 +258,8 @@ export default function QuickDeployModal({ onClose }: { onClose: () => void }) {
 
   const minimizedJobs = jobs.filter((j) => j.minimized);
 
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+  return mounted ? createPortal(
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] p-4">
       <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-2xl lg:max-w-4xl xl:max-w-5xl max-h-[88vh] flex flex-col transition-all duration-300">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700 shrink-0">
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">Quick Deploy</h2>
@@ -494,6 +499,7 @@ export default function QuickDeployModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
       </div>
-    </div>
-  );
+    </div>,
+    document.body
+    ) : null;
 }

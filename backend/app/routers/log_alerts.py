@@ -298,10 +298,18 @@ def _check_all_sources():
 
 
 def _run_periodic_log_alert_check():
-    settings = get_settings()
-    interval = getattr(settings, "LOG_ALERT_CHECK_INTERVAL_SECONDS", 30)
+    from app.database import SessionLocal
+    from app.alert_settings_models import get_interval_minutes
+
     while True:
-        time.sleep(max(10, interval))
+        db = SessionLocal()
+        try:
+            interval_minutes = get_interval_minutes(db, "log_alerts")
+        except Exception:
+            interval_minutes = 1
+        finally:
+            db.close()
+        time.sleep(max(10, interval_minutes * 60))
         try:
             _check_all_sources()
         except Exception as exc:
