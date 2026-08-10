@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     SSH_CONNECT_TIMEOUT: int = 10
     SSH_PRIVATE_KEY_PATH: str = ""
 
+    # InfraLink Agent (optional Agent-based host management, alongside SSH).
+    # False by default: when False, all InfraLink UI/API/WebSocket surfaces
+    # are disabled and SSH behavior is completely unchanged.
+    AGENT_ENABLED: bool = False
+
     # Base directory containing your repos/projects, e.g. /var/www/fullstack
     # Used ONLY by the admin-only repo/.env browser feature. The backend
     # will never read outside this directory.

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth";
+import InfraLinkLogo from "@/components/branding/InfraLinkLogo";
 
 function formatCountdown(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
@@ -23,6 +24,26 @@ export default function LoginPage() {
   const [lockedSeconds, setLockedSeconds] = useState<number | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Only animate step transitions AFTER the first paint. Both step
+  // panels below always carry "transition-all duration-300" - on the
+  // very first render there's nothing to transition FROM, but if a
+  // screenshot/paint happens to land inside that first transition
+  // window anyway, the panel can render mid-slide (translate-x not yet
+  // settled), visually clipping the left edge of its text. Gating the
+  // transition classes behind this flag means the initial paint always
+  // renders already-settled (opacity-100 translate-x-0), and only
+  // switches to animated afterwards, once the user actually changes steps.
+  const [animateSteps, setAnimateSteps] = useState(false);
+  useEffect(() => {
+    if (!mounted) return;
+    const t = setTimeout(() => setAnimateSteps(true), 50);
+    return () => clearTimeout(t);
+  }, [mounted]);
 
   useEffect(() => {
     if (lockedSeconds === null) return;
@@ -124,6 +145,17 @@ export default function LoginPage() {
 
   const isLocked = lockedSeconds !== null && lockedSeconds > 0;
 
+  // Renders nothing until the client has fully mounted and Tailwind's
+  // CSS has applied. Without this, there's a brief window where the
+  // HTML paints before position:relative lands on this wrapper - the
+  // background blobs below (position:absolute, -left-40) then measure
+  // against <body> instead, which can widen the scrollable area
+  // leftward for a moment and leave the viewport offset, cropping the
+  // card's left edge until a refresh re-primes the CSS cache.
+  if (!mounted) {
+    return <div className="min-h-screen bg-slate-950" />;
+  }
+
   return (
     <div className="min-h-screen relative flex items-center justify-center px-4 overflow-hidden bg-slate-950">
       <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-slate-950 to-purple-950" />
@@ -141,20 +173,19 @@ export default function LoginPage() {
 
       <div className="relative w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-500 to-indigo-600 shadow-lg shadow-brand-500/30 mb-4 animate-scale-in">
-            <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7">
-              <path d="M12 2 2 7l10 5 10-5-10-5Z" />
-              <path d="m2 17 10 5 10-5" />
-              <path d="m2 12 10 5 10-5" />
-            </svg>
+          <div className="relative inline-flex items-center justify-center mb-2 animate-scale-in">
+            <div className="absolute inset-0 rounded-full bg-gradient-to-br from-brand-500/40 to-indigo-600/40 blur-2xl animate-pulse" />
+            <InfraLinkLogo
+              variant="full"
+              className="relative h-28 w-auto object-contain drop-shadow-[0_0_25px_rgba(99,102,241,0.5)]"
+            />
           </div>
-          <h1 className="text-2xl font-semibold text-white tracking-tight">PM2 Dashboard</h1>
         </div>
 
         <div className="rounded-2xl bg-white/[0.07] backdrop-blur-xl border border-white/10 shadow-2xl p-8">
           <div className="relative overflow-hidden">
             <div
-              className={`transition-all duration-300 ease-out ${
+              className={`${animateSteps ? "transition-all duration-300 ease-out" : ""} ${
                 step === "credentials" ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4 absolute inset-0 pointer-events-none"
               }`}
             >
@@ -217,7 +248,7 @@ export default function LoginPage() {
             </div>
 
             <div
-              className={`transition-all duration-300 ease-out ${
+              className={`${animateSteps ? "transition-all duration-300 ease-out" : ""} ${
                 step === "otp" ? "opacity-100 translate-x-0" : "opacity-0 translate-x-4 absolute inset-0 pointer-events-none"
               }`}
             >

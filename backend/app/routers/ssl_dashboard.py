@@ -225,11 +225,22 @@ def _do_full_scan():
 
 
 def _run_periodic_ssl_scan():
-    """Background loop: re-scans every server with an nginx conf dir once
-    every 2 hours, so certificate data stays fresh without every page
-    load or manual click needing to wait on SSH to the whole fleet."""
+    """Background loop: re-scans every server with an nginx conf dir on
+    an admin-configurable interval (default 2 hours), so certificate
+    data stays fresh without every page load or manual click needing to
+    wait on SSH to the whole fleet. Interval is re-read from the DB at
+    the start of every cycle, so a saved change in Alert Settings takes
+    effect on the next cycle without a restart."""
+    from app.database import SessionLocal
+    from app.alert_settings_models import get_interval_minutes
+
     while True:
-        time.sleep(2 * 60 * 60)
+        db = SessionLocal()
+        try:
+            interval_minutes = get_interval_minutes(db, "ssl_scan")
+        finally:
+            db.close()
+        time.sleep(max(60, interval_minutes * 60))
         logger.info("[ssl_scan] periodic scan starting")
         _do_full_scan()
         logger.info("[ssl_scan] periodic scan finished")

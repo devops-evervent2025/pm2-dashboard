@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import ThemeToggle from "@/components/ThemeToggle";
+import InfraLinkLogo from "@/components/branding/InfraLinkLogo";
 
 const ROLE_STYLES: Record<string, string> = {
   admin: "bg-purple-100 text-purple-700",
@@ -390,8 +391,10 @@ export default function Navbar({ crumbs }: { crumbs?: { label: string; href?: st
     <header className="bg-white border-b border-slate-200 sticky top-0 z-10 dark:bg-slate-900 dark:border-slate-700">
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3 text-sm">
-          <Link href="/dashboard" className="font-semibold text-slate-800 dark:text-slate-100">
-            PM2 Dashboard
+          <Link href="/dashboard" className="flex items-center transition-all hover:scale-105 focus:outline-none">
+            <div className="rounded-lg bg-white dark:bg-slate-800/60 dark:ring-1 dark:ring-white/5 px-2 py-1 shadow-sm dark:shadow-inner">
+              <InfraLinkLogo variant="full" className="h-10 w-auto object-contain" />
+            </div>
           </Link>
           {crumbs?.map((c, i) => (
             <span key={i} className="flex items-center gap-3 text-slate-400">

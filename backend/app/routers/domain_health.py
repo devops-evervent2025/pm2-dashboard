@@ -198,10 +198,15 @@ def _check_and_store_domain_health(db: Session):
 
 def _run_periodic_domain_health_check():
     from app.database import SessionLocal
+    from app.alert_settings_models import get_interval_minutes
 
     while True:
-        time.sleep(CHECK_INTERVAL_SECONDS)
         db = SessionLocal()
+        try:
+            interval_minutes = get_interval_minutes(db, "domain_health")
+        except Exception:
+            interval_minutes = 1
+        time.sleep(max(30, interval_minutes * 60))
         try:
             _check_and_store_domain_health(db)
         except Exception as exc:

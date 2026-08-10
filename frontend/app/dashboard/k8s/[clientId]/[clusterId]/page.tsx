@@ -13,6 +13,9 @@ export default function K8sClusterPodsPage() {
 
   const [cluster, setCluster] = useState<K8sClusterItem | null>(null);
   const [pods, setPods] = useState<K8sPodItem[]>([]);
+  const [namespaceFilter, setNamespaceFilter] = useState("");
+  const [nodeFilter, setNodeFilter] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,6 +50,19 @@ export default function K8sClusterPodsPage() {
     return () => clearInterval(interval);
   }, [role, fetchData]);
 
+  const namespaces = Array.from(new Set(pods.map((p) => p.namespace))).sort();
+  const nodes = Array.from(
+    new Set(pods.map((p) => p.node_name).filter((n): n is string => !!n))
+  ).sort();
+
+  const q = searchQuery.trim().toLowerCase();
+  const filteredPods = pods.filter((p) => {
+    if (namespaceFilter && p.namespace !== namespaceFilter) return false;
+    if (nodeFilter && p.node_name !== nodeFilter) return false;
+    if (q && !p.name.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
   return (
     <div className="min-h-screen">
       <Navbar
@@ -70,14 +86,68 @@ export default function K8sClusterPodsPage() {
           </button>
         </div>
 
+        {!loading && !error && pods.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3 mb-6">
+            <input
+              type="text"
+              placeholder="Search pod name…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="input-field text-sm w-full max-w-xs"
+            />
+            <select
+              className="input-field text-sm w-auto"
+              value={namespaceFilter}
+              onChange={(e) => setNamespaceFilter(e.target.value)}
+            >
+              <option value="">All namespaces ({namespaces.length})</option>
+              {namespaces.map((ns) => (
+                <option key={ns} value={ns}>
+                  {ns}
+                </option>
+              ))}
+            </select>
+            <select
+              className="input-field text-sm w-auto"
+              value={nodeFilter}
+              onChange={(e) => setNodeFilter(e.target.value)}
+            >
+              <option value="">All nodes ({nodes.length})</option>
+              {nodes.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            {(namespaceFilter || nodeFilter || searchQuery) && (
+              <button
+                className="btn-secondary text-xs"
+                onClick={() => {
+                  setNamespaceFilter("");
+                  setNodeFilter("");
+                  setSearchQuery("");
+                }}
+              >
+                Clear filters
+              </button>
+            )}
+            <span className="text-xs text-slate-400 ml-auto">
+              {filteredPods.length} of {pods.length} pods
+            </span>
+          </div>
+        )}
+
         {loading && <p className="text-slate-500">Loading pods…</p>}
         {error && <p className="text-red-600">{error}</p>}
         {!loading && !error && pods.length === 0 && (
           <div className="card p-10 text-center text-slate-500">No pods found on this cluster.</div>
         )}
+        {!loading && !error && pods.length > 0 && filteredPods.length === 0 && (
+          <div className="card p-10 text-center text-slate-500">No pods match the current filters.</div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {pods.map((p) => (
+          {filteredPods.map((p) => (
             <K8sPodCard
               key={`${p.namespace}/${p.name}`}
               clusterId={Number(clusterId)}

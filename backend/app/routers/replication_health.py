@@ -218,11 +218,15 @@ def _check_and_store_replication_health(db: Session):
 
 def _run_periodic_replication_health_check():
     from app.database import SessionLocal
+    from app.alert_settings_models import get_interval_minutes
 
     while True:
-        settings = get_settings()
-        time.sleep(max(10, settings.MAXSCALE_CHECK_INTERVAL_SECONDS))
         db = SessionLocal()
+        try:
+            interval_minutes = get_interval_minutes(db, "replication_health")
+        except Exception:
+            interval_minutes = 1
+        time.sleep(max(10, interval_minutes * 60))
         try:
             _check_and_store_replication_health(db)
         except Exception as exc:

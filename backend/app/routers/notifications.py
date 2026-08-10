@@ -408,6 +408,62 @@ def _run_daily_digest_scheduler():
         _time.sleep(30)
 
 
+_pm2_crash_last_alerted: dict = {}  # {(server_id, process_name): last_email_sent_at}
+PM2_CRASH_RE_ALERT_COOLDOWN_MINUTES = 30  # don't re-email the same crashed process every cycle
+
+
+def _run_periodic_pm2_crash_check():
+    """NEW background loop (none existed before) - checks PM2 process
+    status on an admin-configurable interval and emails immediately when
+    a crash is found, instead of only surfacing crashes when someone
+    opens the bell icon or waits for the once-daily 9am digest."""
+    from app.database import SessionLocal
+    from app.alert_settings_models import get_interval_minutes
+
+    while True:
+        db = SessionLocal()
+        try:
+            interval_minutes = get_interval_minutes(db, "pm2_crash")
+        except Exception:
+            interval_minutes = 5
+        _time.sleep(max(30, interval_minutes * 60))
+        try:
+            alerts = _collect_process_alerts(db)
+            now = _dt.datetime.utcnow()
+            new_alerts = []
+            for a in alerts:
+                key = (a.server_id, a.process_name)
+                last_sent = _pm2_crash_last_alerted.get(key)
+                if last_sent and (now - last_sent) < _dt.timedelta(minutes=PM2_CRASH_RE_ALERT_COOLDOWN_MINUTES):
+                    continue
+                new_alerts.append(a)
+                _pm2_crash_last_alerted[key] = now
+
+            if new_alerts:
+                recipients = [r.email for r in db.query(NotificationRecipient).all()]
+                if recipients:
+                    rows_html = "".join(
+                        f"<tr><td>{a.server_name or a.server_id}</td><td>{a.process_name}</td><td>{a.status}</td></tr>"
+                        for a in new_alerts
+                    )
+                    send_email(
+                        recipients,
+                        f"[PM2 Dashboard] {len(new_alerts)} process alert(s)",
+                        f"<p>{len(new_alerts)} PM2 process(es) need attention:</p>"
+                        f"<table border='1' cellpadding='6' style='border-collapse:collapse'>"
+                        f"<tr><th>Server</th><th>Process</th><th>Status</th></tr>{rows_html}</table>",
+                    )
+        except Exception as exc:
+            print(f"[pm2_crash] check cycle failed: {type(exc).__name__}: {exc}")
+        finally:
+            db.close()
+
+
+def start_periodic_pm2_crash_check():
+    thread = _threading.Thread(target=_run_periodic_pm2_crash_check, daemon=True)
+    thread.start()
+
+
 def start_daily_digest_scheduler():
     thread = _threading.Thread(target=_run_daily_digest_scheduler, daemon=True)
     thread.start()

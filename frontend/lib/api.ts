@@ -168,3 +168,38 @@ export interface K8sClientItem {
   cluster_count: number;
   created_at: string;
 }
+
+// ---- InfraLink Agents (Phase 1: registration, heartbeat, status) ----
+export interface InfraLinkAgentItem {
+  id: string;
+  server_id: number;
+  status: "online" | "offline";
+  hostname?: string | null;
+  os?: string | null;
+  agent_version?: string | null;
+  cpu_percent?: number | null;
+  ram_percent?: number | null;
+  disk_percent?: number | null;
+  last_seen_at?: string | null;
+}
+
+export interface InfraLinkRegistrationTokenItem {
+  token: string;
+  expires_at: string;
+}
+
+export async function fetchInfraLinkAgents(): Promise<InfraLinkAgentItem[]> {
+  const res = await api.get("/api/infralink/agents");
+  return res.data;
+}
+
+export async function createInfraLinkRegistrationToken(
+  serverId: number,
+  ttlMinutes: number = 15
+): Promise<InfraLinkRegistrationTokenItem> {
+  const res = await api.post("/api/infralink/registration-tokens", {
+    server_id: serverId,
+    ttl_minutes: ttlMinutes,
+  });
+  return res.data;
+}

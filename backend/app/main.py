@@ -7,7 +7,11 @@ from app import notification_models  # noqa: F401
 from app import otp_models  # noqa: F401
 from app import server_resource_models  # noqa: F401
 from app import build_run_models  # noqa: F401
-from app.routers import auth, clients, servers, processes, logs, system, remote_repos, terminal, ssl_dashboard, notifications, activity_log, domain_health, server_logs, replication_health, log_alerts, server_resources, build_manager, docker, k8s
+from app import alert_settings_models  # noqa: F401
+from app import infralink_models  # noqa: F401
+from app import access_control_models  # noqa: F401
+from app import tenant_models  # noqa: F401
+from app.routers import auth, clients, servers, processes, logs, system, remote_repos, terminal, ssl_dashboard, notifications, activity_log, domain_health, server_logs, replication_health, log_alerts, server_resources, build_manager, alert_settings, docker, k8s, infralink
 
 from app.routers.ssl_dashboard import start_periodic_ssl_scan
 from app.routers.notifications import start_daily_digest_scheduler
@@ -15,8 +19,10 @@ from app.routers.domain_health import start_periodic_domain_health_check
 from app.routers.replication_health import start_periodic_replication_health_check
 from app.routers.log_alerts import start_periodic_log_alert_check
 from app.routers.build_manager import start_deploy_scan_scheduler
+from app.routers.notifications import start_periodic_pm2_crash_check
 from app.init_db import bootstrap_admin
 from app.auto_migrate import run_auto_migrations
+from app.tenant_models import bootstrap_default_tenant
 
 settings = get_settings()
 
@@ -47,19 +53,23 @@ app.include_router(replication_health.router)
 app.include_router(log_alerts.router)
 app.include_router(server_resources.router)
 app.include_router(build_manager.router)
+app.include_router(alert_settings.router)
 app.include_router(docker.router)
 app.include_router(k8s.router)
 app.include_router(k8s.client_router)
+app.include_router(infralink.router)
 
 
 @app.on_event("startup")
 def on_startup():
     # Dynamically create all tables (clients, servers, processes-audit, users) if missing
     Base.metadata.create_all(bind=engine)
+    bootstrap_default_tenant(engine)
     run_auto_migrations(engine)
     bootstrap_admin()
     start_periodic_ssl_scan()
     start_daily_digest_scheduler()
+    start_periodic_pm2_crash_check()
     start_deploy_scan_scheduler()
     start_periodic_domain_health_check()
     start_periodic_replication_health_check()

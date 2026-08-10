@@ -45,6 +45,7 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(100), unique=True, index=True, nullable=False)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1)
     email = Column(String(255), unique=True, index=True, nullable=True)
     hashed_password = Column(String(255), nullable=False)
     role = Column(Enum(RoleEnum), default=RoleEnum.viewer, nullable=False)
@@ -59,6 +60,7 @@ class Client(Base):
     __tablename__ = "clients"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), unique=True, nullable=False, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1)
     description = Column(String(500), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -71,6 +73,7 @@ class Server(Base):
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
     name = Column(String(255), nullable=False)
     ip_address = Column(String(100), nullable=False)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, default=1)
     ssh_port = Column(Integer, default=22)
     ssh_username = Column(String(100), default="root")
     ssh_password = Column(String(500), nullable=True)
