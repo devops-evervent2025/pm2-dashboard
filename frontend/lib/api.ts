@@ -151,6 +151,26 @@ export interface K8sClusterItem {
   online?: boolean | null;
 }
 
+
+export interface K8sClusterFullDetail {
+  id: number;
+  client_id: number;
+  name: string;
+  environment?: string | null;
+  connection_type: K8sConnectionType;
+  ssh_ip_address?: string | null;
+  ssh_port?: number | null;
+  ssh_username?: string | null;
+  ssh_password?: string | null;
+  ssh_private_key_path?: string | null;
+  kubectl_path?: string | null;
+  kubeconfig_yaml?: string | null;
+  api_server_url?: string | null;
+  api_token?: string | null;
+  api_ca_cert?: string | null;
+  api_verify_ssl?: string | null;
+}
+
 export interface K8sPodItem {
   name: string;
   namespace: string;
@@ -169,37 +189,3 @@ export interface K8sClientItem {
   created_at: string;
 }
 
-// ---- InfraLink Agents (Phase 1: registration, heartbeat, status) ----
-export interface InfraLinkAgentItem {
-  id: string;
-  server_id: number;
-  status: "online" | "offline";
-  hostname?: string | null;
-  os?: string | null;
-  agent_version?: string | null;
-  cpu_percent?: number | null;
-  ram_percent?: number | null;
-  disk_percent?: number | null;
-  last_seen_at?: string | null;
-}
-
-export interface InfraLinkRegistrationTokenItem {
-  token: string;
-  expires_at: string;
-}
-
-export async function fetchInfraLinkAgents(): Promise<InfraLinkAgentItem[]> {
-  const res = await api.get("/api/infralink/agents");
-  return res.data;
-}
-
-export async function createInfraLinkRegistrationToken(
-  serverId: number,
-  ttlMinutes: number = 15
-): Promise<InfraLinkRegistrationTokenItem> {
-  const res = await api.post("/api/infralink/registration-tokens", {
-    server_id: serverId,
-    ttl_minutes: ttlMinutes,
-  });
-  return res.data;
-}

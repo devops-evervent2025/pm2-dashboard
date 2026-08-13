@@ -31,15 +31,17 @@ export default function K8sPodCard({
   // PM2/Docker's admin-or-developer restart/stop.
   const canDelete = role === "admin";
 
-  async function handleDelete() {
-    if (!confirm(`Delete pod "${pod.name}"? If it's managed by a Deployment/ReplicaSet it will be recreated automatically.`)) {
-      return;
-    }
+  async function runAction(action: "delete" | "restart") {
+    const confirmMsg =
+      action === "restart"
+        ? `Restart pod "${pod.name}"? Kubernetes restarts a pod by deleting it - its controller (if any) recreates it immediately.`
+        : `Delete pod "${pod.name}"? If it's managed by a Deployment/ReplicaSet it will be recreated automatically.`;
+    if (!confirm(confirmMsg)) return;
     setBusy(true);
     try {
       await api.post(`/k8s-clusters/${clusterId}/pods/${encodeURIComponent(pod.name)}/action`, {
         namespace: pod.namespace,
-        action: "delete",
+        action,
       });
       onAction();
     } catch (err) {
@@ -79,9 +81,14 @@ export default function K8sPodCard({
           View logs
         </Link>
         {canDelete && (
-          <button disabled={busy} onClick={handleDelete} className="btn-secondary text-xs text-red-600">
-            Delete pod
-          </button>
+          <>
+            <button disabled={busy} onClick={() => runAction("restart")} className="btn-secondary text-xs">
+              Restart
+            </button>
+            <button disabled={busy} onClick={() => runAction("delete")} className="btn-secondary text-xs text-red-600">
+              Delete pod
+            </button>
+          </>
         )}
       </div>
     </div>

@@ -193,8 +193,16 @@ async def websocket_k8s_logs(websocket: WebSocket, cluster_id: int, namespace: s
             await websocket.send_text("__ERROR__: Cluster not found")
             await websocket.close(code=4404)
             return
-        db.add(ProcessLogAudit(server_id=0, process_name=f"k8s:{cluster.name}:{namespace}/{pod_name}", user_id=user.id))
-        db.commit()
+        # ProcessLogAudit.server_id is a FK into `servers`, and K8s clusters
+        # have no row there (server_id=0 doesn't exist) - this insert always
+        # violates the FK constraint. Audit logging must never block the
+        # actual log stream, so any failure here is caught and rolled back;
+        # it only means this one view isn't recorded in the audit trail.
+        try:
+            db.add(ProcessLogAudit(server_id=0, process_name=f"k8s:{cluster.name}:{namespace}/{pod_name}", user_id=user.id))
+            db.commit()
+        except Exception:
+            db.rollback()
         db.refresh(cluster)
         db.expunge(cluster)
     finally:

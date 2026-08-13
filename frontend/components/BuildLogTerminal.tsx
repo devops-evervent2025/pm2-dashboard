@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { WS_URL } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { useLogAutoScroll } from "@/lib/useLogAutoScroll";
 
 // Strips ANSI/VT100 escape + cursor-control sequences (used by npm,
 // prisma, etc. for progress bars/spinners) - without this, raw control
@@ -43,9 +44,9 @@ export default function BuildLogTerminal({
   onStatusChange?: (status: Status, hadError: boolean) => void;
 }) {
   const [lines, setLines] = useState<string[]>([]);
+  const { containerRef, isAtBottom, jumpToLatest, scrollHandlers } = useLogAutoScroll(lines);
   const [status, setStatus] = useState<Status>("connecting");
   const [errored, setErrored] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -80,9 +81,6 @@ export default function BuildLogTerminal({
     };
   }, [wsPath]);
 
-  useEffect(() => {
-    containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight });
-  }, [lines]);
 
   useEffect(() => {
     onStatusChange?.(status, errored);
@@ -120,7 +118,8 @@ export default function BuildLogTerminal({
           )}
         </div>
       </div>
-      <div ref={containerRef} className="flex-1 min-h-0 overflow-y-auto bg-slate-900 text-slate-100 font-mono text-xs p-4 space-y-0.5">
+      <div className="relative flex-1 min-h-0">
+        <div ref={containerRef} {...scrollHandlers} className="h-full overflow-y-auto bg-slate-900 text-slate-100 font-mono text-xs p-4 space-y-0.5">
         {lines.length === 0 && <p className="text-slate-500">Connecting…</p>}
         {lines.map((line, i) => {
           const cleaned = stripAnsi(line);
@@ -131,6 +130,16 @@ export default function BuildLogTerminal({
             </div>
           );
         })}
+        </div>
+        {!isAtBottom && (
+          <button
+            type="button"
+            onClick={jumpToLatest}
+            className="absolute bottom-3 right-3 px-3 py-1.5 rounded-full bg-slate-700 hover:bg-slate-600 text-slate-100 text-xs font-medium shadow-lg flex items-center gap-1"
+          >
+            ↓ Jump to latest
+          </button>
+        )}
       </div>
     </div>
   );

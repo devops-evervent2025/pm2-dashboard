@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { WS_URL } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { useLogAutoScroll } from "@/lib/useLogAutoScroll";
 
 function logLineColorClass(line: string): string {
   const jsonMatch = line.match(/"level"\s*:\s*"([a-zA-Z]+)"/);
@@ -41,10 +42,9 @@ export default function LogsTerminal({
   processName: string;
 }) {
   const [lines, setLines] = useState<string[]>([]);
+  const { containerRef, isAtBottom, jumpToLatest, scrollHandlers } = useLogAutoScroll(lines);
   const [status, setStatus] = useState<"connecting" | "open" | "closed" | "error">("connecting");
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isAtBottom, setIsAtBottom] = useState(true);
-  const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const router = useRouter();
 
@@ -87,27 +87,6 @@ export default function LogsTerminal({
     };
   }, [serverId, processName]);
 
-  // Only auto-scroll to the newest lines if the user is already near the
-  // bottom - if they've scrolled up to read earlier output, new incoming
-  // lines must NOT yank them back down.
-  useEffect(() => {
-    if (!isAtBottom) return;
-    containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight });
-  }, [lines, isAtBottom]);
-
-  const BOTTOM_THRESHOLD_PX = 60;
-
-  function handleScroll() {
-    const el = containerRef.current;
-    if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    setIsAtBottom(distanceFromBottom <= BOTTOM_THRESHOLD_PX);
-  }
-
-  function jumpToLatest() {
-    setIsAtBottom(true);
-    containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" });
-  }
 
   // Esc key exits fullscreen, same as most fullscreen UIs
   useEffect(() => {
@@ -187,7 +166,7 @@ export default function LogsTerminal({
       <div className="relative flex-1 min-h-0">
         <div
           ref={containerRef}
-          onScroll={handleScroll}
+          {...scrollHandlers}
           className="h-full overflow-y-auto bg-slate-900 text-slate-100 font-mono text-xs p-4 space-y-0.5"
         >
           {lines.length === 0 && (

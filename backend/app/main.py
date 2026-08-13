@@ -8,10 +8,7 @@ from app import otp_models  # noqa: F401
 from app import server_resource_models  # noqa: F401
 from app import build_run_models  # noqa: F401
 from app import alert_settings_models  # noqa: F401
-from app import infralink_models  # noqa: F401
-from app import access_control_models  # noqa: F401
-from app import tenant_models  # noqa: F401
-from app.routers import auth, clients, servers, processes, logs, system, remote_repos, terminal, ssl_dashboard, notifications, activity_log, domain_health, server_logs, replication_health, log_alerts, server_resources, build_manager, alert_settings, docker, k8s, infralink
+from app.routers import auth, clients, servers, processes, logs, system, remote_repos, terminal, ssl_dashboard, notifications, activity_log, domain_health, server_logs, replication_health, log_alerts, server_resources, build_manager, alert_settings, docker, k8s
 
 from app.routers.ssl_dashboard import start_periodic_ssl_scan
 from app.routers.notifications import start_daily_digest_scheduler
@@ -57,7 +54,6 @@ app.include_router(alert_settings.router)
 app.include_router(docker.router)
 app.include_router(k8s.router)
 app.include_router(k8s.client_router)
-app.include_router(infralink.router)
 
 
 @app.on_event("startup")

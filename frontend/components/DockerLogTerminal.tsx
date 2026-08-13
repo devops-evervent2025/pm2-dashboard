@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { WS_URL } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { useLogAutoScroll } from "@/lib/useLogAutoScroll";
 
 function logLineColorClass(line: string): string {
   const jsonMatch = line.match(/"level"\s*:\s*"([a-zA-Z]+)"/);
@@ -25,11 +26,10 @@ export default function DockerLogTerminal({
   containerName: string;
 }) {
   const [lines, setLines] = useState<string[]>([]);
+  const { containerRef, isAtBottom, jumpToLatest, scrollHandlers } = useLogAutoScroll(lines);
   const [status, setStatus] = useState<"connecting" | "open" | "closed" | "error">("connecting");
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isAtBottom, setIsAtBottom] = useState(true);
   const [copied, setCopied] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const router = useRouter();
 
@@ -69,22 +69,6 @@ export default function DockerLogTerminal({
     };
   }, [serverId, containerName]);
 
-  useEffect(() => {
-    if (!isAtBottom) return;
-    containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight });
-  }, [lines, isAtBottom]);
-
-  const BOTTOM_THRESHOLD_PX = 60;
-  function handleScroll() {
-    const el = containerRef.current;
-    if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    setIsAtBottom(distanceFromBottom <= BOTTOM_THRESHOLD_PX);
-  }
-  function jumpToLatest() {
-    setIsAtBottom(true);
-    containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" });
-  }
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -180,7 +164,7 @@ export default function DockerLogTerminal({
       <div className="relative flex-1 min-h-0">
         <div
           ref={containerRef}
-          onScroll={handleScroll}
+          {...scrollHandlers}
           className="h-full overflow-y-auto bg-slate-900 text-slate-100 font-mono text-xs p-4 space-y-0.5"
         >
           {lines.length === 0 && <p className="text-slate-500">Waiting for log output…</p>}

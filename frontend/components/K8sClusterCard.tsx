@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { K8sClusterItem, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import EditClusterModal from "@/components/EditClusterModal";
 
 const CONN_LABELS: Record<string, string> = {
   ssh_kubectl: "SSH + kubectl",
@@ -13,12 +14,15 @@ const CONN_LABELS: Record<string, string> = {
 export default function K8sClusterCard({
   cluster,
   onDeleted,
+  onUpdated,
 }: {
   cluster: K8sClusterItem;
   onDeleted?: () => void;
+  onUpdated?: () => void;
 }) {
   const { role } = useAuth();
   const [deleting, setDeleting] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
 
   async function handleDelete(e: React.MouseEvent) {
     e.preventDefault();
@@ -36,6 +40,7 @@ export default function K8sClusterCard({
   }
 
   return (
+    <>
     <Link
       href={`/dashboard/k8s/${cluster.client_id}/${cluster.id}`}
       data-aos="fade-up"
@@ -68,15 +73,35 @@ export default function K8sClusterCard({
             : "Unreachable"}
         </span>
         {role === "admin" && (
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
-          >
-            {deleting ? "Deleting..." : "Delete"}
-          </button>
+          <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setShowEdit(true);
+              }}
+              className="text-slate-500 hover:text-slate-800"
+            >
+              Edit
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="text-red-500 hover:text-red-700"
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </button>
+          </div>
         )}
       </div>
     </Link>
+      {showEdit && (
+        <EditClusterModal
+          clusterId={cluster.id}
+          onClose={() => setShowEdit(false)}
+          onUpdated={() => onUpdated?.()}
+        />
+      )}
+    </>
   );
 }

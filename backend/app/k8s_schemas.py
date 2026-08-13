@@ -66,3 +66,57 @@ class K8sClientOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class K8sClientUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+class K8sClusterUpdate(BaseModel):
+    name: Optional[str] = None
+    environment: Optional[str] = None
+    connection_type: Optional[str] = None
+
+    ssh_ip_address: Optional[str] = None
+    ssh_port: Optional[int] = None
+    ssh_username: Optional[str] = None
+    ssh_password: Optional[str] = None
+    ssh_private_key_path: Optional[str] = None
+    kubectl_path: Optional[str] = None
+
+    kubeconfig_yaml: Optional[str] = None
+
+    api_server_url: Optional[str] = None
+    api_token: Optional[str] = None
+    api_ca_cert: Optional[str] = None
+    api_verify_ssl: Optional[str] = None
+
+
+class K8sClusterFullOut(BaseModel):
+    """Every stored field, used only to pre-fill the edit form - the
+    create/list endpoints deliberately don't expose secrets like
+    ssh_password/api_token, but the edit modal needs the current values
+    to show the form in its current state."""
+    id: int
+    client_id: int
+    name: str
+    environment: Optional[str] = None
+    connection_type: str
+
+    ssh_ip_address: Optional[str] = None
+    ssh_port: Optional[int] = None
+    ssh_username: Optional[str] = None
+    ssh_password: Optional[str] = None
+    ssh_private_key_path: Optional[str] = None
+    kubectl_path: Optional[str] = None
+
+    kubeconfig_yaml: Optional[str] = None
+
+    api_server_url: Optional[str] = None
+    api_token: Optional[str] = None
+    api_ca_cert: Optional[str] = None
+    api_verify_ssl: Optional[str] = None
+
+    class Config:
+        from_attributes = True

@@ -7,7 +7,7 @@ from app.models import User
 from app.k8s_models import K8sCluster, K8sClient, K8sConnectionTypeEnum
 from app.k8s_schemas import (
     K8sClusterCreate, K8sClusterOut, K8sPodOut, K8sPodActionRequest,
-    K8sClientCreate, K8sClientOut,
+    K8sClientCreate, K8sClientOut, K8sClientUpdate, K8sClusterUpdate, K8sClusterFullOut,
 )
 from app.k8s_manager import list_pods, pod_action, check_online, K8sConnectionError
 
@@ -46,6 +46,23 @@ def get_k8s_client(client_id: int, db: Session = Depends(get_db), _user: User = 
     return K8sClientOut(id=c.id, name=c.name, description=c.description, cluster_count=len(c.clusters), created_at=c.created_at.isoformat())
 
 
+@client_router.patch("/{client_id}", response_model=K8sClientOut)
+def update_k8s_client(client_id: int, payload: K8sClientUpdate, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    c = db.query(K8sClient).filter(K8sClient.id == client_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Kubernetes client not found")
+    update_data = payload.model_dump(exclude_unset=True)
+    if "name" in update_data and update_data["name"] != c.name:
+        existing = db.query(K8sClient).filter(K8sClient.name == update_data["name"]).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="A Kubernetes client with this name already exists")
+    for field, value in update_data.items():
+        setattr(c, field, value)
+    db.commit()
+    db.refresh(c)
+    return K8sClientOut(id=c.id, name=c.name, description=c.description, cluster_count=len(c.clusters), created_at=c.created_at.isoformat())
+
+
 @client_router.delete("/{client_id}")
 def delete_k8s_client(client_id: int, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
     c = db.query(K8sClient).filter(K8sClient.id == client_id).first()
@@ -55,7 +72,7 @@ def delete_k8s_client(client_id: int, db: Session = Depends(get_db), _admin: Use
     db.commit()
     return {"detail": "Kubernetes client deleted"}
 
-ALLOWED_ACTIONS = {"delete"}
+ALLOWED_ACTIONS = {"delete", "restart"}
 
 
 def _get_cluster_or_404(cluster_id: int, db: Session) -> K8sCluster:
@@ -113,6 +130,30 @@ def get_cluster(cluster_id: int, db: Session = Depends(get_db), _user: User = De
     out = K8sClusterOut.model_validate(cluster)
     out.online = check_online(cluster)
     return out
+
+
+@router.get("/{cluster_id}/edit-detail", response_model=K8sClusterFullOut)
+def get_cluster_edit_detail(cluster_id: int, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    """Every stored field, including secrets - used only to pre-fill the
+    edit form. Admin-only, unlike the regular GET which omits secrets."""
+    cluster = _get_cluster_or_404(cluster_id, db)
+    return K8sClusterFullOut.model_validate(cluster)
+
+
+@router.patch("/{cluster_id}", response_model=K8sClusterOut)
+def update_cluster(cluster_id: int, payload: K8sClusterUpdate, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    cluster = _get_cluster_or_404(cluster_id, db)
+    update_data = payload.model_dump(exclude_unset=True)
+    if "connection_type" in update_data:
+        try:
+            update_data["connection_type"] = K8sConnectionTypeEnum(update_data["connection_type"])
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Unsupported connection_type: {update_data['connection_type']}")
+    for field, value in update_data.items():
+        setattr(cluster, field, value)
+    db.commit()
+    db.refresh(cluster)
+    return K8sClusterOut.model_validate(cluster)
 
 
 @router.delete("/{cluster_id}")

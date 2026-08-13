@@ -86,7 +86,7 @@ export default function K8sClusterPodsPage() {
           </button>
         </div>
 
-        {!loading && !error && pods.length > 0 && (
+        {!error && pods.length > 0 && (
           <div className="flex flex-wrap items-center gap-3 mb-6">
             <input
               type="text"

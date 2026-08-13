@@ -3,16 +3,20 @@ import Link from "next/link";
 import { useState } from "react";
 import { K8sClientItem, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import EditK8sClientModal from "@/components/EditK8sClientModal";
 
 export default function K8sClientCard({
   client,
   onDeleted,
+  onUpdated,
 }: {
   client: K8sClientItem;
   onDeleted?: () => void;
+  onUpdated?: () => void;
 }) {
   const { role } = useAuth();
   const [deleting, setDeleting] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
 
   async function handleDelete(e: React.MouseEvent) {
     e.preventDefault();
@@ -57,15 +61,34 @@ export default function K8sClientCard({
           Added {new Date(client.created_at).toLocaleDateString()}
         </span>
         {role === "admin" && (
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="text-xs text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
-          >
-            {deleting ? "Deleting..." : "Delete"}
-          </button>
+          <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setShowEdit(true);
+              }}
+              className="text-xs text-slate-500 hover:text-slate-800"
+            >
+              Edit
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="text-xs text-red-500 hover:text-red-700"
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </button>
+          </div>
         )}
       </div>
+      {showEdit && (
+        <EditK8sClientModal
+          client={client}
+          onClose={() => setShowEdit(false)}
+          onUpdated={() => onUpdated?.()}
+        />
+      )}
     </Link>
   );
 }

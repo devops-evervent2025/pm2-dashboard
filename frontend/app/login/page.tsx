@@ -157,19 +157,21 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center px-4 overflow-hidden bg-slate-950">
-      <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-slate-950 to-purple-950" />
-      <div className="absolute -top-40 -left-40 w-96 h-96 bg-indigo-600/30 rounded-full blur-3xl animate-blob" />
-      <div className="absolute -bottom-40 -right-32 w-96 h-96 bg-purple-600/30 rounded-full blur-3xl animate-blob animation-delay-2000" />
-      <div className="absolute top-1/3 right-1/4 w-72 h-72 bg-brand-500/20 rounded-full blur-3xl animate-blob animation-delay-4000" />
-      <div
-        className="absolute inset-0 opacity-[0.03]"
-        style={{
-          backgroundImage:
-            "linear-gradient(to right, white 1px, transparent 1px), linear-gradient(to bottom, white 1px, transparent 1px)",
-          backgroundSize: "48px 48px",
-        }}
-      />
+    <div className="min-h-screen relative flex items-center justify-center px-4 bg-slate-950">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+        <div className="absolute inset-0 bg-gradient-to-br from-indigo-950 via-slate-950 to-purple-950" />
+        <div className="absolute -top-40 -left-40 w-96 h-96 bg-indigo-600/30 rounded-full blur-3xl animate-blob" />
+        <div className="absolute -bottom-40 -right-32 w-96 h-96 bg-purple-600/30 rounded-full blur-3xl animate-blob animation-delay-2000" />
+        <div className="absolute top-1/3 right-1/4 w-72 h-72 bg-brand-500/20 rounded-full blur-3xl animate-blob animation-delay-4000" />
+        <div
+          className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage:
+              "linear-gradient(to right, white 1px, transparent 1px), linear-gradient(to bottom, white 1px, transparent 1px)",
+            backgroundSize: "48px 48px",
+          }}
+        />
+      </div>
 
       <div className="relative w-full max-w-sm">
         <div className="mb-8 text-center">
@@ -183,7 +185,7 @@ export default function LoginPage() {
         </div>
 
         <div className="rounded-2xl bg-white/[0.07] backdrop-blur-xl border border-white/10 shadow-2xl p-8">
-          <div className="relative overflow-hidden">
+          <div className="relative">
             <div
               className={`${animateSteps ? "transition-all duration-300 ease-out" : ""} ${
                 step === "credentials" ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4 absolute inset-0 pointer-events-none"

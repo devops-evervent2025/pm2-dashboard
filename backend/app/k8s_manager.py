@@ -79,7 +79,11 @@ def _ssh_list_pods(cluster: K8sCluster) -> List[dict]:
 def _ssh_pod_action(cluster: K8sCluster, namespace: str, pod_name: str, action: str) -> str:
     ns = shlex.quote(namespace)
     name = shlex.quote(pod_name)
-    if action == "delete":
+    if action in ("delete", "restart"):
+        # Kubernetes has no native "restart pod" verb - deleting the pod is
+        # the standard way. If it's managed by a Deployment/ReplicaSet, the
+        # controller recreates it immediately (this is what "restart" means
+        # in k8s); a bare pod with no controller will just disappear.
         return _ssh_run(cluster, f"{_kubectl_bin(cluster)} delete pod {name} -n {ns}")
     raise K8sConnectionError(f"Unsupported action for ssh_kubectl: {action}")
 
@@ -182,9 +186,9 @@ def _api_pod_action(cluster: K8sCluster, namespace: str, pod_name: str, action: 
     api_client = _build_api_client(cluster)
     v1 = k8s_client.CoreV1Api(api_client)
     try:
-        if action == "delete":
+        if action in ("delete", "restart"):
             v1.delete_namespaced_pod(name=pod_name, namespace=namespace)
-            return f"Pod {pod_name} deleted."
+            return f"Pod {pod_name} deleted - its controller (if any) will recreate it."
         raise K8sConnectionError(f"Unsupported action: {action}")
     except K8sConnectionError:
         raise
