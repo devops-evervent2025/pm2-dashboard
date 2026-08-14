@@ -29,7 +29,7 @@ from app.ssh_manager import run_restricted_command, SSHConnectionError
 
 router = APIRouter(prefix="/servers/{server_id}/terminal", tags=["terminal"])
 
-MAX_COMMAND_LENGTH = 4000
+MAX_COMMAND_LENGTH = 100000
 COMMAND_TIMEOUT_SECONDS = 20
 
 BLOCKED_FLAGS = {
