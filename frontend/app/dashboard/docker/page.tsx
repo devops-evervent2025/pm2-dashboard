@@ -6,6 +6,7 @@ import { api, ClientItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import DockerClientCard from "@/components/DockerClientCard";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 export default function DockerDashboardPage() {
   const { role, isLoading } = useAuth();
@@ -36,15 +37,16 @@ export default function DockerDashboardPage() {
   }, [role, isLoading, router, fetchClients]);
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       <Navbar crumbs={[{ label: "Docker Dashboard" }]} />
+      <div className="relative flex-1 overflow-y-auto min-h-0">
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-slate-800">Docker — Clients</h1>
           <p className="text-sm text-slate-500">Select a client to view its servers' containers</p>
         </div>
 
-        {loading && <p className="text-slate-500">Loading clients…</p>}
+        <PageLoadingOverlay show={loading} message="Loading clients" subMessage="Fetching client list from dashboard" />
         {error && <p className="text-red-600">{error}</p>}
 
         {!loading && clients.length === 0 && (
@@ -57,6 +59,7 @@ export default function DockerDashboardPage() {
           ))}
         </div>
       </main>
+      </div>
     </div>
   );
 }

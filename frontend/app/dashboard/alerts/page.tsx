@@ -6,6 +6,7 @@ import Link from "next/link";
 import { api, ClientItem, ServerItem, PM2ProcessItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 interface ProcessAlert {
   type: "process";
@@ -196,15 +197,24 @@ export default function AlertsPage() {
   // still in flight, or for a non-admin who briefly has a stale role.
   if (isLoading || !role || role !== "admin") {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-sm text-slate-400">Loading…</p>
+      <div className="flex flex-col h-full min-h-0">
+        <Navbar crumbs={[{ label: "Alerts" }]} />
+        <div className="relative flex-1 overflow-y-auto min-h-0">
+          <PageLoadingOverlay show message="Loading alerts" subMessage="Verifying admin access" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       <Navbar crumbs={[{ label: "Alerts" }]} />
+      <div className="relative flex-1 overflow-y-auto min-h-0">
+        <PageLoadingOverlay
+          show={loading && alerts.length === 0 && !scanError}
+          message="Scanning alerts"
+          subMessage="Checking all clients and servers via SSH"
+        />
       <main className="max-w-5xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -214,8 +224,8 @@ export default function AlertsPage() {
               server we couldn&apos;t reach, shows up here across all clients.
             </p>
           </div>
-          <button className="btn-secondary text-sm" onClick={runScan} disabled={loading}>
-            {loading ? "Scanning…" : "Refresh"}
+          <button className="btn-secondary text-sm inline-flex items-center gap-1.5" onClick={runScan} disabled={loading}>
+            {loading ? (<><Spinner size="xs" /><span>Scanning</span></>) : "Refresh"}
           </button>
         </div>
 
@@ -265,7 +275,7 @@ export default function AlertsPage() {
                 {settingsError && <p className="text-sm text-red-600 mb-3">{settingsError}</p>}
 
                 {settingsLoading ? (
-                  <p className="text-sm text-slate-400">Loading…</p>
+                  <LoadingState message="Loading" variant="compact" />
                 ) : (
                   <div className="space-y-2">
                     {alertSettings.map((s) => (
@@ -314,11 +324,7 @@ export default function AlertsPage() {
 
         {scanError && <p className="text-red-600 mb-4">{scanError}</p>}
 
-        {loading && alerts.length === 0 && !scanError && (
-          <p className="text-slate-500">Scanning all clients and servers…</p>
-        )}
-
-        {!loading && alerts.length === 0 && !scanError && (
+{!loading && alerts.length === 0 && !scanError && (
           <div className="card p-10 text-center">
             <p className="text-emerald-600 font-medium mb-1">All clear</p>
             <p className="text-sm text-slate-500">
@@ -392,6 +398,7 @@ export default function AlertsPage() {
           </div>
         )}
       </main>
+      </div>
     </div>
   );
 }

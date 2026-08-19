@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import ServerCard from "@/components/ServerCard";
 import AddServerModal from "@/components/AddServerModal";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 export default function ClientServersPage() {
   const { clientId } = useParams<{ clientId: string }>();
@@ -45,8 +46,9 @@ export default function ClientServersPage() {
   }, [role, isLoading, router, fetchData]);
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       <Navbar crumbs={client ? [{ label: client.name }] : []} />
+      <div className="relative flex-1 overflow-y-auto min-h-0">
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -62,7 +64,7 @@ export default function ClientServersPage() {
           )}
         </div>
 
-        {loading && <p className="text-slate-500">Loading servers…</p>}
+        <PageLoadingOverlay show={loading} message="Loading servers" subMessage="Connecting to server registry" />
         {error && <p className="text-red-600">{error}</p>}
 
         {!loading && servers.length === 0 && (
@@ -73,11 +75,12 @@ export default function ClientServersPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {servers.map((s) => (
-            <ServerCard key={s.id} server={s} onDeleted={fetchData} />
+            <ServerCard key={s.id} server={s} onDeleted={fetchData} onUpdated={fetchData} />
           ))}
         </div>
       </main>
 
+      </div>
       {showAddModal && client && (
         <AddServerModal
           clientId={client.id}

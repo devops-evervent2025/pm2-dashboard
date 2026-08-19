@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import AddDomainModal from "@/components/AddDomainModal";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 interface SslDomainItem {
   id: number;
@@ -205,8 +206,9 @@ export default function SslDashboardPage() {
     : "Refresh all";
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       <Navbar crumbs={[{ label: "SSL Certificates" }]} />
+      <div className="relative flex-1 overflow-y-auto min-h-0">
       <main className="max-w-5xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -237,7 +239,7 @@ export default function SslDashboardPage() {
         </div>
 
         {error && <p className="text-red-600 mb-4">{error}</p>}
-        {loading && <p className="text-slate-500">Loading…</p>}
+        <PageLoadingOverlay show={loading} message="Loading SSL domains" subMessage="Scanning certificate status" />
 
         {!loading && !error && domains.length === 0 && (
           <div className="card p-10 text-center text-slate-500">
@@ -375,6 +377,7 @@ export default function SslDashboardPage() {
           clientId={selectedClientId}
         />
       )}
+      </div>
     </div>
   );
 }

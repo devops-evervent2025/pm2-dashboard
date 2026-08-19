@@ -6,6 +6,7 @@ import { api, UserItem, Role } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import AddUserModal from "@/components/AddUserModal";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 const ROLE_STYLES: Record<string, string> = {
   admin: "bg-purple-100 text-purple-700",
@@ -88,8 +89,9 @@ export default function UsersPage() {
   if (myRole && myRole !== "admin") return null;
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       <Navbar crumbs={[{ label: "Users" }]} />
+      <div className="relative flex-1 overflow-y-auto min-h-0">
       <main className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -103,7 +105,7 @@ export default function UsersPage() {
           </button>
         </div>
 
-        {loading && <p className="text-slate-500">Loading users…</p>}
+        <PageLoadingOverlay show={loading} message="Loading users" subMessage="Fetching user accounts" />
         {error && <p className="text-red-600">{error}</p>}
 
         {!loading && !error && (
@@ -182,6 +184,7 @@ export default function UsersPage() {
         </div>
       </main>
 
+      </div>
       {showAddModal && <AddUserModal onClose={() => setShowAddModal(false)} onCreated={fetchUsers} />}
     </div>
   );

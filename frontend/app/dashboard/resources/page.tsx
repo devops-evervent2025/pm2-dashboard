@@ -5,6 +5,7 @@ import { fetchAllResources, ClientResourceItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import ClientResourceCard from "@/components/ClientResourceCard";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 export default function ResourcesPage() {
   const { role, isLoading } = useAuth();
@@ -47,12 +48,20 @@ export default function ResourcesPage() {
   }, [role, load]);
 
   if (isLoading || role !== "admin") {
-    return null;
+    return (
+      <div className="flex flex-col h-full min-h-0">
+        <Navbar />
+        <div className="relative flex-1 overflow-y-auto min-h-0">
+          <PageLoadingOverlay show message="Loading resources" subMessage="Verifying admin access" />
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       <Navbar />
+      <div className="relative flex-1 overflow-y-auto min-h-0">
       <main className="max-w-6xl mx-auto px-4 py-8 flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <div>
@@ -60,7 +69,7 @@ export default function ResourcesPage() {
             <p className="text-sm text-slate-500">CPU, RAM & Disk usage per client, live via SSH</p>
           </div>
           <button onClick={load} className="badge bg-brand-50 text-brand-600">
-            {loading ? "Refreshing..." : "Refresh"}
+            {loading ? (<span className="inline-flex items-center gap-1.5"><Spinner size="xs" /><span>Refreshing</span></span>) : "Refresh"}
           </button>
         </div>
 
@@ -74,9 +83,7 @@ export default function ResourcesPage() {
 
         {error && <p className="text-sm text-red-500">{error}</p>}
 
-        {loading && data.length === 0 && (
-          <p className="text-slate-500">Loading server resources…</p>
-        )}
+        <PageLoadingOverlay show={loading && data.length === 0} message="Loading server resources" subMessage="Fetching CPU, RAM and disk via SSH" />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {data
@@ -88,6 +95,7 @@ export default function ResourcesPage() {
             ))}
         </div>
       </main>
+      </div>
     </div>
   );
 }

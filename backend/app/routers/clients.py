@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import get_current_user, require_admin
 from app.models import Client, User
-from app.schemas import ClientCreate, ClientOut
+from app.schemas import ClientCreate, ClientOut, ClientUpdate
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 
@@ -46,6 +46,29 @@ def get_client(client_id: int, db: Session = Depends(get_db), _user: User = Depe
     out.server_count = len(client.servers)
     return out
 
+
+
+@router.patch("/{client_id}", response_model=ClientOut)
+def update_client(
+    client_id: int,
+    payload: ClientUpdate,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    update_data = payload.model_dump(exclude_unset=True)
+    if "name" in update_data and update_data["name"] != client.name:
+        if db.query(Client).filter(Client.name == update_data["name"]).first():
+            raise HTTPException(status_code=400, detail="Client with this name already exists")
+    for field, value in update_data.items():
+        setattr(client, field, value)
+    db.commit()
+    db.refresh(client)
+    out = ClientOut.model_validate(client)
+    out.server_count = len(client.servers)
+    return out
 
 @router.delete("/{client_id}")
 def delete_client(client_id: int, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):

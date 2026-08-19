@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { api, K8sConnectionType, K8sClusterFullDetail } from "@/lib/api";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 export default function EditClusterModal({
   clusterId,
@@ -102,7 +103,7 @@ export default function EditClusterModal({
   if (loadingDetail) {
     return (
       <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-20 px-4">
-        <div className="card w-full max-w-lg p-6 text-center text-slate-500">Loading cluster details…</div>
+        <div className="card w-full max-w-lg p-6"><LoadingState message="Loading cluster details" variant="section" /></div>
       </div>
     );
   }

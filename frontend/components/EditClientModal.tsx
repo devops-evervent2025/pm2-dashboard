@@ -1,17 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { api } from "@/lib/api";
+import { ClientItem, api } from "@/lib/api";
 
-export default function AddClientModal({
+export default function EditClientModal({
+  client,
   onClose,
-  onCreated,
+  onUpdated,
 }: {
+  client: ClientItem;
   onClose: () => void;
-  onCreated: () => void;
+  onUpdated: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  const [name, setName] = useState(client.name);
+  const [description, setDescription] = useState(client.description || "");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -20,11 +22,14 @@ export default function AddClientModal({
     setError(null);
     setLoading(true);
     try {
-      await api.post("/clients", { name, description: description || null });
-      onCreated();
+      await api.patch(`/clients/${client.id}`, {
+        name,
+        description: description || null,
+      });
+      onUpdated();
       onClose();
     } catch (err: any) {
-      setError(err?.response?.data?.detail || "Failed to create client");
+      setError(err?.response?.data?.detail || "Failed to update client");
     } finally {
       setLoading(false);
     }
@@ -33,7 +38,7 @@ export default function AddClientModal({
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-20 px-4">
       <div className="card w-full max-w-md p-6">
-        <h2 className="font-semibold text-lg mb-4">Add New Client</h2>
+        <h2 className="font-semibold text-lg mb-4">Edit Client</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1">Client name</label>
@@ -54,7 +59,7 @@ export default function AddClientModal({
               Cancel
             </button>
             <button type="submit" disabled={loading} className="btn-primary">
-              {loading ? "Creating…" : "Create client"}
+              {loading ? "Saving…" : "Save changes"}
             </button>
           </div>
         </form>

@@ -6,6 +6,7 @@ import { api, ClientItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import AppLogsClientCard from "@/components/AppLogsClientCard";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 export default function AppLogsClientsPage() {
   const { role, isLoading } = useAuth();
@@ -36,13 +37,14 @@ export default function AppLogsClientsPage() {
   }, [role, isLoading, router, fetchClients]);
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       <Navbar />
+      <div className="relative flex-1 overflow-y-auto min-h-0">
       <main className="max-w-6xl mx-auto px-4 py-8">
         <h1 className="text-2xl font-semibold text-slate-800 mb-2">App Logs</h1>
         <p className="text-sm text-slate-500 mb-6">Select a client to view its servers</p>
 
-        {loading && <p className="text-slate-500">Loading clients…</p>}
+        <PageLoadingOverlay show={loading} message="Loading clients" subMessage="Fetching client list from dashboard" />
         {error && <p className="text-red-600">{error}</p>}
 
         {!loading && clients.length === 0 && (
@@ -55,6 +57,7 @@ export default function AppLogsClientsPage() {
           ))}
         </div>
       </main>
+      </div>
     </div>
   );
 }

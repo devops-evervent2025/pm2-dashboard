@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { LoadingState } from "@/components/Preloader";
 
 interface LogSource {
   id: number;
@@ -103,7 +104,7 @@ export default function ServerLogsBrowser({ serverId }: { serverId: number }) {
   const handleTail = async (filename: string) => {
     if (activeSourceId === null) return;
     setTailFilename(filename);
-    setTailLines(["Loading…"]);
+    setTailLines(["⏳ Fetching logs…"]);
     setIsFullscreen(false);
     try {
       const res = await api.get(`${base}/sources/${activeSourceId}/files/${encodeURIComponent(filename)}/tail`, {
@@ -189,8 +190,8 @@ export default function ServerLogsBrowser({ serverId }: { serverId: number }) {
             <tbody>
               {loadingFiles && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
-                    Loading files…
+                  <td colSpan={4} className="px-4 py-6">
+                    <LoadingState message="Loading log files" variant="compact" />
                   </td>
                 </tr>
               )}

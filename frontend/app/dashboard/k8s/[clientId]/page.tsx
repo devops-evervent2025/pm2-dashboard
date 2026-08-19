@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import K8sClusterCard from "@/components/K8sClusterCard";
 import AddClusterModal from "@/components/AddClusterModal";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 export default function K8sClientClustersPage() {
   const { clientId } = useParams<{ clientId: string }>();
@@ -44,13 +45,14 @@ export default function K8sClientClustersPage() {
   }, [role, isLoading, router, fetchData]);
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       <Navbar
         crumbs={[
           { label: "Kubernetes Dashboard", href: "/dashboard/k8s" },
           { label: client ? client.name : "Clusters" },
         ]}
       />
+      <div className="relative flex-1 overflow-y-auto min-h-0">
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -66,7 +68,7 @@ export default function K8sClientClustersPage() {
           )}
         </div>
 
-        {loading && <p className="text-slate-500">Loading clusters…</p>}
+        <PageLoadingOverlay show={loading} message="Loading servers" subMessage="Connecting to server registry" />
         {error && <p className="text-red-600">{error}</p>}
         {!loading && clusters.length === 0 && (
           <div className="card p-10 text-center text-slate-500">
@@ -81,6 +83,7 @@ export default function K8sClientClustersPage() {
         </div>
       </main>
 
+      </div>
       {showAddModal && client && (
         <AddClusterModal clientId={client.id} onClose={() => setShowAddModal(false)} onCreated={fetchData} />
       )}

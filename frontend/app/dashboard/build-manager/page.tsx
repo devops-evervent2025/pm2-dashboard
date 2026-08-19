@@ -6,6 +6,7 @@ import { api, RepoItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import BuildLogTerminal from "@/components/BuildLogTerminal";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 interface ScanPath {
   id: number;
@@ -169,8 +170,9 @@ export default function BuildManagerPage() {
   if (role && role !== "admin" && role !== "developer" && role !== "viewer") return null;
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       <Navbar crumbs={[{ label: "Build Manager" }]} />
+      <div className="relative flex-1 overflow-y-auto min-h-0">
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-slate-800">Build Manager</h1>
@@ -185,7 +187,7 @@ export default function BuildManagerPage() {
 
         {selectedClientKey === null ? (
           <>
-            {loadingMeta && <p className="text-sm text-slate-500">Loading clients…</p>}
+            <PageLoadingOverlay show={loadingMeta} message="Loading clients" subMessage="Preparing repository browser" />
             {!loadingMeta && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {clients.map((c) => (
@@ -222,7 +224,7 @@ export default function BuildManagerPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="md:col-span-1">
                 <div className="card divide-y divide-slate-100 overflow-hidden">
-                  {loadingClientRepos && <p className="p-4 text-sm text-slate-500">Loading repos…</p>}
+                  {loadingClientRepos && <div className="p-4"><LoadingState message="Loading repos" variant="compact" /></div>}
                   {!loadingClientRepos &&
                     (() => {
                       const unifiedRepos = buildUnifiedRepos();
@@ -304,6 +306,7 @@ export default function BuildManagerPage() {
           </>
         )}
       </main>
+      </div>
     </div>
   );
 }

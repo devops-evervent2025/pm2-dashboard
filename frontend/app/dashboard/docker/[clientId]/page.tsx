@@ -6,6 +6,7 @@ import { api, ClientItem, ServerItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import DockerServerCard from "@/components/DockerServerCard";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 export default function DockerClientServersPage() {
   const { clientId } = useParams<{ clientId: string }>();
@@ -43,13 +44,14 @@ export default function DockerClientServersPage() {
   }, [role, isLoading, router, fetchData]);
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       <Navbar
         crumbs={[
           { label: "Docker Dashboard", href: "/dashboard/docker" },
           { label: client ? client.name : "Servers" },
         ]}
       />
+      <div className="relative flex-1 overflow-y-auto min-h-0">
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-slate-800">
@@ -58,7 +60,7 @@ export default function DockerClientServersPage() {
           <p className="text-sm text-slate-500">Select a server to view its Docker containers</p>
         </div>
 
-        {loading && <p className="text-slate-500">Loading servers…</p>}
+        <PageLoadingOverlay show={loading} message="Loading servers" subMessage="Connecting to server registry" />
         {error && <p className="text-red-600">{error}</p>}
 
         {!loading && servers.length === 0 && (
@@ -71,6 +73,7 @@ export default function DockerClientServersPage() {
           ))}
         </div>
       </main>
+      </div>
     </div>
   );
 }

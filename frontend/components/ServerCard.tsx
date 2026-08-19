@@ -5,16 +5,26 @@ import { useState } from "react";
 import { ServerItem, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import EnvBadge from "./EnvBadge";
+import EditServerModal from "./EditServerModal";
 
 export default function ServerCard({
   server,
   onDeleted,
+  onUpdated,
 }: {
   server: ServerItem;
   onDeleted?: () => void;
+  onUpdated?: () => void;
 }) {
   const { role } = useAuth();
   const [deleting, setDeleting] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+
+  function handleEdit(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowEdit(true);
+  }
 
   async function handleDelete(e: React.MouseEvent) {
     e.preventDefault();
@@ -42,58 +52,76 @@ export default function ServerCard({
   }
 
   return (
-    <Link
-      href={`/dashboard/${server.client_id}/${server.id}`}
-      data-aos="fade-up"
-      data-aos-duration="700"
-      data-aos-once="true"
-      className="card p-5 flex flex-col gap-2 group"
-    >
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-slate-800">
-          {server.name}
-        </h3>
+    <>
+      <Link
+        href={`/dashboard/${server.client_id}/${server.id}`}
+        data-aos="fade-up"
+        data-aos-duration="700"
+        data-aos-once="true"
+        className="card p-5 flex flex-col gap-2 group"
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-slate-800">
+            {server.name}
+          </h3>
 
-        <EnvBadge environment={server.environment} />
-      </div>
+          <EnvBadge environment={server.environment} />
+        </div>
 
-      <p className="text-sm text-slate-500 font-mono">
-        {server.ip_address}
-      </p>
+        <p className="text-sm text-slate-500 font-mono">
+          {server.ip_address}
+        </p>
 
-      <div className="flex items-center justify-between text-xs text-slate-400">
-        <span className="flex items-center gap-2">
-          <span
-            className={`w-2 h-2 rounded-full ${
-              server.online === undefined || server.online === null
-                ? "bg-slate-300"
-                : server.online
-                ? "bg-emerald-500"
-                : "bg-red-500"
-            }`}
-          />
+        <div className="flex items-center justify-between text-xs text-slate-400">
+          <span className="flex items-center gap-2">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                server.online === undefined || server.online === null
+                  ? "bg-slate-300"
+                  : server.online
+                  ? "bg-emerald-500"
+                  : "bg-red-500"
+              }`}
+            />
 
-          {server.online === undefined || server.online === null
-            ? "Status unknown"
-            : server.online
-            ? "Online"
-            : "Unreachable"}
+            {server.online === undefined || server.online === null
+              ? "Status unknown"
+              : server.online
+              ? "Online"
+              : "Unreachable"}
 
-          <span>
-            · {server.ssh_username}@{server.ip_address}:{server.ssh_port}
+            <span>
+              · {server.ssh_username}@{server.ip_address}:{server.ssh_port}
+            </span>
           </span>
-        </span>
 
-        {role === "admin" && (
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
-          >
-            {deleting ? "Deleting..." : "Delete"}
-          </button>
-        )}
-      </div>
-    </Link>
+          {role === "admin" && (
+            <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={handleEdit}
+                className="text-xs text-brand-600 hover:text-brand-800"
+              >
+                Edit
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="text-xs text-red-500 hover:text-red-700"
+              >
+                {deleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          )}
+        </div>
+      </Link>
+
+      {showEdit && (
+        <EditServerModal
+          server={server}
+          onClose={() => setShowEdit(false)}
+          onUpdated={() => onUpdated?.()}
+        />
+      )}
+    </>
   );
 }
