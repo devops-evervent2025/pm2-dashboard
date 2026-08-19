@@ -38,7 +38,7 @@ from sqlalchemy import Column, Integer, String, Boolean, Text, DateTime, Foreign
 from sqlalchemy.orm import Session
 
 from app.database import get_db, Base
-from app.auth import require_admin, get_current_user
+from app.auth import require_admin, require_any_role, get_current_user
 from app.models import User, Server, RepoScanPath, SecretRevealAudit
 from app.env_audit_models import EnvEditAudit
 from app.schemas import (
@@ -410,6 +410,58 @@ _scan_status = {"running": False, "started_at": None, "finished_at": None, "scan
 _scan_lock = threading.Lock()
 
 
+def _scan_single_path(db: Session, sp: RepoScanPath) -> dict:
+    """SSH scan one configured base path and refresh its repo + env cache."""
+    server = db.query(Server).filter(Server.id == sp.server_id).first()
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found for this scan path.")
+
+    try:
+        find_cmd = (
+            f"find {shlex.quote(sp.base_path)} -mindepth 1 -maxdepth 1 "
+            f"-type d -printf '%f\\n' 2>/dev/null"
+        )
+        output = run_command(server, find_cmd)
+    except SSHConnectionError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    repo_names = sorted(line.strip() for line in output.splitlines() if line.strip())
+
+    db.query(RepoCacheEntry).filter(RepoCacheEntry.scan_path_id == sp.id).delete()
+    db.query(RepoEnvCacheEntry).filter(RepoEnvCacheEntry.scan_path_id == sp.id).delete()
+
+    now = datetime.datetime.utcnow()
+    for repo_name in repo_names:
+        db.add(RepoCacheEntry(scan_path_id=sp.id, repo_name=repo_name, last_scanned_at=now))
+
+        repo_dir = f"{sp.base_path}/{repo_name}"
+        for rel in CANDIDATE_ENV_PATHS:
+            full_path = f"{repo_dir}/{rel}"
+            command = f"test -f {shlex.quote(full_path)} && cat {shlex.quote(full_path)} || true"
+            try:
+                env_output = run_command(server, command)
+            except SSHConnectionError:
+                continue
+            if not env_output.strip():
+                continue
+            pairs = _parse_env_text(env_output)
+            for k, v in pairs:
+                sensitive = _is_sensitive(k)
+                db.add(RepoEnvCacheEntry(
+                    scan_path_id=sp.id, repo_name=repo_name, file_path=rel,
+                    key_name=k, is_sensitive=sensitive,
+                    value=None if sensitive else v, last_scanned_at=now,
+                ))
+
+    db.commit()
+    return {
+        "scan_path_id": sp.id,
+        "server_name": server.name,
+        "repos_found": len(repo_names),
+        "repo_names": repo_names,
+    }
+
+
 def _run_scan_all_background():
     from app.database import SessionLocal
 
@@ -420,50 +472,10 @@ def _run_scan_all_background():
         _scan_status["scanned"] = 0
 
         for sp in scan_paths:
-            server = db.query(Server).filter(Server.id == sp.server_id).first()
-            if not server:
-                _scan_status["scanned"] += 1
-                continue
-
             try:
-                find_cmd = (
-                    f"find {shlex.quote(sp.base_path)} -mindepth 1 -maxdepth 1 "
-                    f"-type d -printf '%f\\n' 2>/dev/null"
-                )
-                output = run_command(server, find_cmd)
-            except SSHConnectionError:
-                _scan_status["scanned"] += 1
-                continue
-
-            repo_names = sorted(line.strip() for line in output.splitlines() if line.strip())
-
-            db.query(RepoCacheEntry).filter(RepoCacheEntry.scan_path_id == sp.id).delete()
-            db.query(RepoEnvCacheEntry).filter(RepoEnvCacheEntry.scan_path_id == sp.id).delete()
-
-            now = datetime.datetime.utcnow()
-            for repo_name in repo_names:
-                db.add(RepoCacheEntry(scan_path_id=sp.id, repo_name=repo_name, last_scanned_at=now))
-
-                repo_dir = f"{sp.base_path}/{repo_name}"
-                for rel in CANDIDATE_ENV_PATHS:
-                    full_path = f"{repo_dir}/{rel}"
-                    command = f"test -f {shlex.quote(full_path)} && cat {shlex.quote(full_path)} || true"
-                    try:
-                        env_output = run_command(server, command)
-                    except SSHConnectionError:
-                        continue
-                    if not env_output.strip():
-                        continue
-                    pairs = _parse_env_text(env_output)
-                    for k, v in pairs:
-                        sensitive = _is_sensitive(k)
-                        db.add(RepoEnvCacheEntry(
-                            scan_path_id=sp.id, repo_name=repo_name, file_path=rel,
-                            key_name=k, is_sensitive=sensitive,
-                            value=None if sensitive else v, last_scanned_at=now,
-                        ))
-
-            db.commit()
+                _scan_single_path(db, sp)
+            except HTTPException:
+                pass
             _scan_status["scanned"] += 1
     except Exception as exc:
         _scan_status["error"] = str(exc)
@@ -494,6 +506,19 @@ def scan_all_remote_repos(_admin: User = Depends(require_admin)):
     thread = threading.Thread(target=_run_scan_all_background, daemon=True)
     thread.start()
     return {"detail": "Scan started in the background.", "status": _scan_status}
+
+
+@router.post("/scan-paths/{scan_path_id}/scan")
+def scan_single_scan_path(
+    scan_path_id: int,
+    db: Session = Depends(get_db),
+    _user: User = Depends(require_any_role),
+):
+    """Re-scan one remote base path over SSH and refresh its cached repos/env."""
+    sp = db.query(RepoScanPath).filter(RepoScanPath.id == scan_path_id).first()
+    if not sp:
+        raise HTTPException(status_code=404, detail="Scan path not found.")
+    return _scan_single_path(db, sp)
 
 
 @router.get("/scan-all/status")

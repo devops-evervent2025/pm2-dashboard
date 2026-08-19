@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import QuickDeployModal from "@/components/QuickDeployModal";
 import InfraLinkLogo from "@/components/branding/InfraLinkLogo";
+import { useSidebar } from "@/lib/sidebar-context";
 
 function NavItem({
   href,
@@ -38,63 +39,67 @@ function NavItem({
   );
 }
 
-const SIDEBAR_COLLAPSED_KEY = "pm2dash_sidebar_collapsed";
+function NavSection({ label, collapsed }: { label: string; collapsed: boolean }) {
+  if (collapsed) return <div className="h-2" />;
+  return (
+    <p className="px-4 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+      {label}
+    </p>
+  );
+}
+
+const PM2_DASHBOARD_EXCLUDED_PREFIXES = [
+  "/dashboard/alerts",
+  "/dashboard/users",
+  "/dashboard/repos",
+  "/dashboard/ssl",
+  "/dashboard/app-logs",
+  "/dashboard/resources",
+  "/dashboard/docker",
+  "/dashboard/k8s",
+  "/dashboard/usage",
+  "/dashboard/activity",
+  "/dashboard/terminal",
+  "/dashboard/infralink",
+  "/dashboard/build-manager",
+];
 
 export default function Sidebar() {
   const pathname = usePathname();
   const { role } = useAuth();
   const [showQuickDeploy, setShowQuickDeploy] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const { collapsed, setCollapsed } = useSidebar();
 
-  // Read persisted collapse state after mount only, to avoid a
-  // server/client mismatch flash on first paint.
-  useEffect(() => {
-    const stored = typeof window !== "undefined" ? localStorage.getItem(SIDEBAR_COLLAPSED_KEY) : null;
-    if (stored === "true") setCollapsed(true);
-    setMounted(true);
-  }, []);
-
-  const toggleCollapsed = () => {
-    setCollapsed((prev) => {
-      const next = !prev;
-      if (typeof window !== "undefined") {
-        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
-      }
-      return next;
-    });
-  };
+  const toggleCollapsed = () => setCollapsed((prev) => !prev);
 
   const isDashboardActive =
     pathname === "/dashboard" ||
     (pathname.startsWith("/dashboard/") &&
-      !pathname.startsWith("/dashboard/alerts") &&
-      !pathname.startsWith("/dashboard/users") &&
-      !pathname.startsWith("/dashboard/repos") &&
-      !pathname.startsWith("/dashboard/ssl") &&
-      !pathname.startsWith("/dashboard/app-logs") &&
-      !pathname.startsWith("/dashboard/resources") &&
-      !pathname.startsWith("/dashboard/docker") &&
-      !pathname.startsWith("/dashboard/k8s"));
+      !PM2_DASHBOARD_EXCLUDED_PREFIXES.some((prefix) => pathname.startsWith(prefix)));
+
   const isDockerDashboardActive = pathname.startsWith("/dashboard/docker");
   const isK8sDashboardActive = pathname.startsWith("/dashboard/k8s");
   const isAlertsActive = pathname.startsWith("/dashboard/alerts");
   const isReposActive = pathname.startsWith("/dashboard/repos");
-  const isSslActive = pathname.startsWith("/dashboard/ssl");
   const isTerminalActive = pathname.startsWith("/dashboard/terminal");
   const isAppLogsActive = pathname.startsWith("/dashboard/app-logs");
+  const isSslActive = pathname.startsWith("/dashboard/ssl");
+  const isUsageActive = pathname.startsWith("/dashboard/usage");
+  const isActivityLogActive = pathname.startsWith("/dashboard/activity");
   const isResourcesActive = pathname.startsWith("/dashboard/resources");
 
   return (
     <aside
-      className={`shrink-0 bg-white border-r border-slate-200 h-full shrink-0 overflow-y-auto py-6 px-3 hidden sm:flex sm:flex-col dark:bg-slate-900 dark:border-slate-700 transition-[width] duration-200 ${
+      className={`shrink-0 bg-white border-r border-slate-200 sticky top-0 h-screen overflow-y-auto py-6 px-3 hidden sm:flex sm:flex-col dark:bg-slate-900 dark:border-slate-700 transition-[width] duration-200 ${
         collapsed ? "w-16" : "w-56"
       }`}
     >
       <div className={`mb-6 flex items-center ${collapsed ? "justify-center px-0" : "justify-between px-3"}`}>
-        <div className="rounded-lg bg-white dark:bg-slate-800/60 dark:ring-1 dark:ring-white/5 p-1.5 shadow-sm dark:shadow-inner">
-          <InfraLinkLogo variant="icon" className="h-9 w-auto object-contain" />
-        </div>
+        {!collapsed && (
+          <Link href="/dashboard" className="rounded-lg bg-white dark:bg-slate-800/60 dark:ring-1 dark:ring-white/5 p-1.5 shadow-sm dark:shadow-inner">
+            <InfraLinkLogo variant="full" className="h-9 w-auto object-contain" />
+          </Link>
+        )}
         <button
           type="button"
           onClick={toggleCollapsed}
@@ -116,6 +121,8 @@ export default function Sidebar() {
       </div>
 
       <nav className="space-y-1 flex-1">
+        {/* 1. Dashboards */}
+        <NavSection label="Dashboards" collapsed={collapsed} />
         <NavItem
           href="/dashboard"
           label="PM2 Dashboard"
@@ -149,6 +156,9 @@ export default function Sidebar() {
             </svg>
           }
         />
+
+        {/* 2. Operations */}
+        <NavSection label="Operations" collapsed={collapsed} />
         {role === "admin" && (
           <NavItem
             href="/dashboard/alerts"
@@ -207,66 +217,6 @@ export default function Sidebar() {
             </svg>
           }
         />
-        {role === "admin" && (
-          <NavItem
-            href="/dashboard/ssl"
-            label="SSL Dashboard"
-            active={isSslActive}
-            collapsed={collapsed}
-            icon={
-              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                <path
-                  fillRule="evenodd"
-                  d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            }
-          />
-        )}
-        {role === "admin" && (
-          <NavItem
-            href="/dashboard/activity"
-            label="Activity Log"
-            active={pathname.startsWith("/dashboard/activity")}
-            collapsed={collapsed}
-            icon={
-              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                <path
-                  fillRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            }
-          />
-        )}
-        {role === "admin" && (
-          <NavItem
-            href="/dashboard/resources"
-            label="Resources"
-            active={isResourcesActive}
-            collapsed={collapsed}
-            icon={
-              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                <path d="M3 12h2v6H3v-6zm4-4h2v10H7V8zm4-4h2v14h-2V4zm4 7h2v7h-2v-7z" />
-              </svg>
-            }
-          />
-        )}
-        {role === "admin" && process.env.NEXT_PUBLIC_AGENT_ENABLED === "true" && (
-          <NavItem
-            href="/dashboard/infralink"
-            label="InfraLink"
-            active={pathname.startsWith("/dashboard/infralink")}
-            collapsed={collapsed}
-            icon={
-              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                <path d="M10 2a1 1 0 011 1v2.06a6.002 6.002 0 014.94 4.94H18a1 1 0 110 2h-2.06a6.002 6.002 0 01-4.94 4.94V19a1 1 0 11-2 0v-2.06a6.002 6.002 0 01-4.94-4.94H2a1 1 0 110-2h2.06a6.002 6.002 0 014.94-4.94V3a1 1 0 011-1zm0 5a4 4 0 100 8 4 4 0 000-8z" />
-              </svg>
-            }
-          />
-        )}
         {(role === "admin" || role === "developer") && (
           <button
             type="button"
@@ -283,6 +233,70 @@ export default function Sidebar() {
             </span>
             {!collapsed && "Quick Deploy"}
           </button>
+        )}
+
+        {/* 3. Infrastructure */}
+        {(role === "admin") && (
+          <>
+            <NavSection label="Infrastructure" collapsed={collapsed} />
+            <NavItem
+              href="/dashboard/ssl"
+              label="SSL Dashboard"
+              active={isSslActive}
+              collapsed={collapsed}
+              icon={
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path
+                    fillRule="evenodd"
+                    d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              }
+            />
+            <NavItem
+              href="/dashboard/resources"
+              label="Resources"
+              active={isResourcesActive}
+              collapsed={collapsed}
+              icon={
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm4 1h8v2H6V6zm0 4h5v2H6v-2z" />
+                </svg>
+              }
+            />
+          </>
+        )}
+
+        {/* 4. Activity & audit */}
+        <NavSection label="Activity" collapsed={collapsed} />
+        <NavItem
+          href="/dashboard/usage"
+          label="User Activity"
+          active={isUsageActive}
+          collapsed={collapsed}
+          icon={
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+              <path d="M3 12h2v6H3v-6zm4-4h2v10H7V8zm4-4h2v14h-2V4zm4 7h2v7h-2v-7z" />
+            </svg>
+          }
+        />
+        {role === "admin" && (
+          <NavItem
+            href="/dashboard/activity"
+            label="Activity Log"
+            active={isActivityLogActive}
+            collapsed={collapsed}
+            icon={
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            }
+          />
         )}
       </nav>
       {showQuickDeploy && <QuickDeployModal onClose={() => setShowQuickDeploy(false)} />}
