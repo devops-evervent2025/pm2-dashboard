@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import BuildLogTerminal from "@/components/BuildLogTerminal";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 type ServerTarget = {
   server_id: number;
@@ -431,7 +432,7 @@ export default function QuickDeployModal({ onClose }: { onClose: () => void }) {
               <div>
                 <label className="text-sm font-medium text-slate-700 dark:text-slate-200">3. PM2 processes</label>
                 {loading ? (
-                  <p className="text-xs text-slate-500 mt-1">Loading…</p>
+                  <div className="mt-1"><LoadingState message="Loading" variant="inline" size="xs" /></div>
                 ) : servers.length === 0 ? (
                   <p className="text-xs text-slate-500 mt-1">No cached pm2 process found for this repo.</p>
                 ) : (

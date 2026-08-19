@@ -1,21 +1,47 @@
-# Optional convenience file to spin up MySQL locally for development.
-# The app itself is still deployed via PM2 (see ecosystem.config.js), not Docker.
-version: "3.8"
-
 services:
-  mysql:
-    image: mysql:8.0
-    container_name: pm2_dashboard_mysql
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpass
-      MYSQL_DATABASE: pm2_dashboard
-      MYSQL_USER: pm2dash
-      MYSQL_PASSWORD: change-me
-    ports:
-      - "3306:3306"
-    volumes:
-      - pm2_dashboard_mysql_data:/var/lib/mysql
 
-volumes:
-  pm2_dashboard_mysql_data:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+
+    container_name: dev-pm2-dashboard-backend
+
+    restart: unless-stopped
+
+    env_file:
+      - ./backend/.env
+
+    ports:
+      - "172.16.16.43:8002:8002"
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    volumes:
+      - /home/jenkins/.ssh:/home/jenkins/.ssh:ro
+      - /var/www/fullstack:/var/www/fullstack
+
+    networks:
+      - pm2-dashboard
+
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+
+    container_name: dev-pm2-dashboard-frontend
+
+    restart: unless-stopped
+
+    ports:
+      - "172.16.16.43:3002:3002"
+
+    networks:
+      - pm2-dashboard
+
+
+networks:
+  pm2-dashboard:
+    driver: bridge

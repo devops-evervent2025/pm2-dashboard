@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import K8sClientCard from "@/components/K8sClientCard";
 import AddK8sClientModal from "@/components/AddK8sClientModal";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 export default function K8sDashboardPage() {
   const { role, isLoading } = useAuth();
@@ -37,8 +38,9 @@ export default function K8sDashboardPage() {
   }, [role, isLoading, router, fetchClients]);
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       <Navbar crumbs={[{ label: "Kubernetes Dashboard" }]} />
+      <div className="relative flex-1 overflow-y-auto min-h-0">
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -52,7 +54,7 @@ export default function K8sDashboardPage() {
           )}
         </div>
 
-        {loading && <p className="text-slate-500">Loading clients…</p>}
+        <PageLoadingOverlay show={loading} message="Loading clients" subMessage="Fetching client list from dashboard" />
         {error && <p className="text-red-600">{error}</p>}
         {!loading && clients.length === 0 && (
           <div className="card p-10 text-center text-slate-500">
@@ -67,6 +69,7 @@ export default function K8sDashboardPage() {
         </div>
       </main>
 
+      </div>
       {showAddModal && (
         <AddK8sClientModal onClose={() => setShowAddModal(false)} onCreated={fetchClients} />
       )}

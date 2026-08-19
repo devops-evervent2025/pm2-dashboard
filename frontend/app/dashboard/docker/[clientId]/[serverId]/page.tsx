@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import DockerContainerCard from "@/components/DockerContainerCard";
 import EnvBadge from "@/components/EnvBadge";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 export default function DockerServerContainersPage() {
   const { clientId, serverId } = useParams<{ clientId: string; serverId: string }>();
@@ -49,7 +50,7 @@ export default function DockerServerContainersPage() {
   }, [role, fetchData]);
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       <Navbar
         crumbs={
           server
@@ -61,6 +62,7 @@ export default function DockerServerContainersPage() {
             : []
         }
       />
+      <div className="relative flex-1 overflow-y-auto min-h-0">
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
@@ -79,7 +81,7 @@ export default function DockerServerContainersPage() {
           </p>
         )}
 
-        {loading && <p className="text-slate-500">Loading containers…</p>}
+        <PageLoadingOverlay show={loading} message="Loading" subMessage="Fetching data from remote servers" />
         {error && <p className="text-red-600">{error}</p>}
         {!loading && !error && containers.length === 0 && (
           <div className="card p-10 text-center text-slate-500">
@@ -99,6 +101,7 @@ export default function DockerServerContainersPage() {
           ))}
         </div>
       </main>
+      </div>
     </div>
   );
 }

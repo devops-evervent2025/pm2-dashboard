@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import ThemeToggle from "@/components/ThemeToggle";
 import InfraLinkLogo from "@/components/branding/InfraLinkLogo";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 const ROLE_STYLES: Record<string, string> = {
   admin: "bg-purple-100 text-purple-700",
@@ -149,7 +150,7 @@ function RecipientsModal({ onClose }: { onClose: () => void }) {
             View recipients ({recipients.length})
           </button>
         )}
-        {loading && <p className="text-xs text-slate-400">Loading…</p>}
+        {loading && <LoadingState message="Loading" variant="inline" size="xs" />}
       </div>
 
       {showList && (
@@ -376,7 +377,7 @@ function NotificationBell() {
           )}
 
           {!summary && (
-            <div className="px-4 py-6 text-center text-sm text-slate-400">Loading…</div>
+            <div className="px-4 py-6"><LoadingState message="Loading notifications" variant="compact" /></div>
           )}
         </div>
       )}
@@ -388,7 +389,7 @@ function NotificationBell() {
 export default function Navbar({ crumbs }: { crumbs?: { label: string; href?: string }[] }) {
   const { username, role, logout } = useAuth();
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-10 dark:bg-slate-900 dark:border-slate-700">
+    <header className="bg-white border-b border-slate-200 sticky top-0 z-20 shrink-0 dark:bg-slate-900 dark:border-slate-700">
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3 text-sm">
           <Link href="/dashboard" className="flex items-center transition-all hover:scale-105 focus:outline-none">

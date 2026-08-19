@@ -31,6 +31,14 @@ module.exports = {
           "0%": { opacity: "0", transform: "scale(0.6)" },
           "100%": { opacity: "1", transform: "scale(1)" },
         },
+        "spin-reverse": {
+          from: { transform: "rotate(360deg)" },
+          to: { transform: "rotate(0deg)" },
+        },
+        shimmer: {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(100%)" },
+        },
         shake: {
           "0%, 100%": { transform: "translateX(0)" },
           "20%, 60%": { transform: "translateX(-4px)" },
@@ -42,6 +50,9 @@ module.exports = {
         "fade-in-up": "fade-in-up 0.5s ease-out",
         "scale-in": "scale-in 0.4s ease-out",
         shake: "shake 0.4s ease-in-out",
+        "spin-reverse": "spin-reverse 0.9s linear infinite",
+        "spin-slow": "spin 2.5s linear infinite",
+        shimmer: "shimmer 1.6s infinite",
       },
     },
   },

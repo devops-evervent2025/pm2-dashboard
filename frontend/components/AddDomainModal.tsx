@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 interface ServerOption {
   id: number;
@@ -91,7 +92,7 @@ export default function AddDomainModal({ open, onClose, onAdded, clientId }: Add
           <div>
             <label className="block text-sm text-slate-600 mb-1">Server</label>
             {loadingServers ? (
-              <p className="text-sm text-slate-400">Loading servers…</p>
+              <LoadingState message="Loading servers" variant="compact" />
             ) : (
               <select
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm"

@@ -6,6 +6,7 @@ import { api, ClientItem, ServerItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import AppLogsServerCard from "@/components/AppLogsServerCard";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 export default function AppLogsClientServersPage() {
   const { clientId } = useParams<{ clientId: string }>();
@@ -43,20 +44,21 @@ export default function AppLogsClientServersPage() {
   }, [role, isLoading, router, fetchData]);
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       <Navbar
         crumbs={[
           { label: "App Logs", href: "/dashboard/app-logs" },
           { label: client ? client.name : "Servers" },
         ]}
       />
+      <div className="relative flex-1 overflow-y-auto min-h-0">
       <main className="max-w-6xl mx-auto px-4 py-8">
         <h1 className="text-2xl font-semibold text-slate-800 mb-2">
           {client ? client.name : "Servers"}
         </h1>
         <p className="text-sm text-slate-500 mb-6">Select a server to view its logs</p>
 
-        {loading && <p className="text-slate-500">Loading servers…</p>}
+        <PageLoadingOverlay show={loading} message="Loading servers" subMessage="Connecting to server registry" />
         {error && <p className="text-red-600">{error}</p>}
 
         {!loading && servers.length === 0 && (
@@ -69,6 +71,7 @@ export default function AppLogsClientServersPage() {
           ))}
         </div>
       </main>
+      </div>
     </div>
   );
 }

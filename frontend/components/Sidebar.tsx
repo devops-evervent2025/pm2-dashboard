@@ -87,7 +87,7 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`shrink-0 bg-white border-r border-slate-200 sticky top-0 h-screen overflow-y-auto py-6 px-3 hidden sm:flex sm:flex-col dark:bg-slate-900 dark:border-slate-700 transition-[width] duration-200 ${
+      className={`shrink-0 bg-white border-r border-slate-200 h-full shrink-0 overflow-y-auto py-6 px-3 hidden sm:flex sm:flex-col dark:bg-slate-900 dark:border-slate-700 transition-[width] duration-200 ${
         collapsed ? "w-16" : "w-56"
       }`}
     >

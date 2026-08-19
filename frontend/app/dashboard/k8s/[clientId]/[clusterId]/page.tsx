@@ -5,6 +5,7 @@ import { api, K8sClusterItem, K8sPodItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import K8sPodCard from "@/components/K8sPodCard";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 export default function K8sClusterPodsPage() {
   const { clientId, clusterId } = useParams<{ clientId: string; clusterId: string }>();
@@ -64,7 +65,7 @@ export default function K8sClusterPodsPage() {
   });
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       <Navbar
         crumbs={
           cluster
@@ -76,6 +77,7 @@ export default function K8sClusterPodsPage() {
             : []
         }
       />
+      <div className="relative flex-1 overflow-y-auto min-h-0">
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-semibold text-slate-800">
@@ -137,7 +139,7 @@ export default function K8sClusterPodsPage() {
           </div>
         )}
 
-        {loading && <p className="text-slate-500">Loading pods…</p>}
+        <PageLoadingOverlay show={loading} message="Loading clients" subMessage="Fetching client list from dashboard" />
         {error && <p className="text-red-600">{error}</p>}
         {!loading && !error && pods.length === 0 && (
           <div className="card p-10 text-center text-slate-500">No pods found on this cluster.</div>
@@ -158,6 +160,7 @@ export default function K8sClusterPodsPage() {
           ))}
         </div>
       </main>
+      </div>
     </div>
   );
 }

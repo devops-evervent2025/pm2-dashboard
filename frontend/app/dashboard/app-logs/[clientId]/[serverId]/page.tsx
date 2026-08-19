@@ -34,7 +34,7 @@ export default function AppLogsServerPage() {
   }, [role, isLoading, router, fetchServer]);
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       <Navbar
         crumbs={[
           { label: "App Logs", href: "/dashboard/app-logs" },
@@ -42,6 +42,7 @@ export default function AppLogsServerPage() {
           { label: server ? server.name : "Logs" },
         ]}
       />
+      <div className="relative flex-1 overflow-y-auto min-h-0">
       <main className="max-w-6xl mx-auto px-4 py-8">
         <h1 className="text-2xl font-semibold text-slate-800 mb-6">
           {server ? server.name : "Logs"}
@@ -49,6 +50,7 @@ export default function AppLogsServerPage() {
         {error && <p className="text-red-600 mb-4">{error}</p>}
         <ServerLogsBrowser serverId={Number(serverId)} />
       </main>
+      </div>
     </div>
   );
 }

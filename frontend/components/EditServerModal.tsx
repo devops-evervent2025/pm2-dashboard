@@ -1,48 +1,83 @@
 "use client";
 
 import { useState } from "react";
-import { api } from "@/lib/api";
+import { ServerItem, api } from "@/lib/api";
 
-export default function AddServerModal({
-  clientId,
+export default function EditServerModal({
+  server,
   onClose,
-  onCreated,
+  onUpdated,
 }: {
-  clientId: number;
+  server: ServerItem;
   onClose: () => void;
-  onCreated: () => void;
+  onUpdated: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [ipAddress, setIpAddress] = useState("");
-  const [sshPort, setSshPort] = useState(22);
-  const [sshUsername, setSshUsername] = useState("root");
+  const [name, setName] = useState(server.name);
+  const [ipAddress, setIpAddress] = useState(server.ip_address);
+  const [sshPort, setSshPort] = useState(server.ssh_port);
+  const [sshUsername, setSshUsername] = useState(server.ssh_username);
   const [sshPassword, setSshPassword] = useState("");
   const [sshKeyPath, setSshKeyPath] = useState("");
-  const [tag, setTag] = useState("");
-  const [environment, setEnvironment] = useState("");
+  const [pm2Path, setPm2Path] = useState(server.pm2_path || "");
+  const [tag, setTag] = useState(server.tag || "");
+  const [environment, setEnvironment] = useState<string>(server.environment || "");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const [detecting, setDetecting] = useState(false);
+  const [detectMessage, setDetectMessage] = useState<string | null>(null);
+  const [detectOk, setDetectOk] = useState<boolean | null>(null);
+
+  async function handleDetect() {
+    setDetecting(true);
+    setDetectMessage(null);
+    setDetectOk(null);
+    try {
+      const res = await api.post("/servers/detect-pm2", {
+        ip_address: ipAddress,
+        ssh_port: sshPort,
+        ssh_username: sshUsername,
+        ssh_password: sshPassword || null,
+        ssh_private_key_path: sshKeyPath || null,
+      });
+      if (res.data.found) {
+        setPm2Path(res.data.pm2_path);
+        setDetectOk(true);
+        setDetectMessage(`Found: ${res.data.pm2_path}`);
+      } else {
+        setDetectOk(false);
+        setDetectMessage(res.data.detail || "pm2 not found on this server.");
+      }
+    } catch (err: any) {
+      setDetectOk(false);
+      setDetectMessage(err?.response?.data?.detail || "Could not connect to test this server.");
+    } finally {
+      setDetecting(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
-      await api.post("/servers", {
-        client_id: clientId,
+      const payload: Record<string, unknown> = {
         name,
         ip_address: ipAddress,
         ssh_port: sshPort,
         ssh_username: sshUsername,
-        ssh_password: sshPassword || null,
-        ssh_private_key_path: sshKeyPath || null,
+        pm2_path: pm2Path || null,
         tag: tag || null,
-        environment: environment || null, // omit -> auto-detected server-side
-      });
-      onCreated();
+        environment: environment || null,
+      };
+      if (sshPassword) payload.ssh_password = sshPassword;
+      if (sshKeyPath) payload.ssh_private_key_path = sshKeyPath;
+
+      await api.patch(`/servers/${server.id}`, payload);
+      onUpdated();
       onClose();
     } catch (err: any) {
-      setError(err?.response?.data?.detail || "Failed to create server");
+      setError(err?.response?.data?.detail || "Failed to update server");
     } finally {
       setLoading(false);
     }
@@ -51,7 +86,7 @@ export default function AddServerModal({
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-20 px-4 overflow-y-auto py-8">
       <div className="card w-full max-w-lg p-6">
-        <h2 className="font-semibold text-lg mb-4">Add New Server</h2>
+        <h2 className="font-semibold text-lg mb-4">Edit Server</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
@@ -62,7 +97,6 @@ export default function AddServerModal({
               <label className="block text-sm font-medium mb-1">IP address</label>
               <input
                 className="input-field"
-                placeholder="e.g. 203.0.113.10"
                 value={ipAddress}
                 onChange={(e) => setIpAddress(e.target.value)}
                 required
@@ -92,7 +126,7 @@ export default function AddServerModal({
                 className="input-field"
                 value={sshPassword}
                 onChange={(e) => setSshPassword(e.target.value)}
-                placeholder="leave blank if using a key"
+                placeholder="leave blank to keep current"
               />
             </div>
             <div>
@@ -101,9 +135,37 @@ export default function AddServerModal({
                 className="input-field"
                 value={sshKeyPath}
                 onChange={(e) => setSshKeyPath(e.target.value)}
-                placeholder="/path/on/backend/host"
+                placeholder="leave blank to keep current"
               />
             </div>
+
+            <div className="col-span-2">
+              <label className="block text-sm font-medium mb-1">
+                PM2 binary path <span className="text-slate-400 font-normal">(optional)</span>
+              </label>
+              <div className="flex gap-2">
+                <input
+                  className="input-field"
+                  value={pm2Path}
+                  onChange={(e) => setPm2Path(e.target.value)}
+                  placeholder="leave blank to use pm2 from PATH"
+                />
+                <button
+                  type="button"
+                  onClick={handleDetect}
+                  disabled={detecting || !ipAddress}
+                  className="btn-secondary text-xs whitespace-nowrap"
+                >
+                  {detecting ? "Checking…" : "Detect"}
+                </button>
+              </div>
+              {detectMessage && (
+                <p className={`text-xs mt-1 ${detectOk ? "text-emerald-600" : "text-red-600"}`}>
+                  {detectMessage}
+                </p>
+              )}
+            </div>
+
             <div>
               <label className="block text-sm font-medium mb-1">Tag (optional)</label>
               <input className="input-field" value={tag} onChange={(e) => setTag(e.target.value)} />
@@ -129,7 +191,7 @@ export default function AddServerModal({
               Cancel
             </button>
             <button type="submit" disabled={loading} className="btn-primary">
-              {loading ? "Creating…" : "Create server"}
+              {loading ? "Saving…" : "Save changes"}
             </button>
           </div>
         </form>

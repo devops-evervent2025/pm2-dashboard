@@ -118,3 +118,107 @@ body {
 html, body {
   overflow-x: hidden;
 }
+
+.skeleton-shimmer {
+  @apply bg-slate-200 dark:bg-slate-700/80 relative overflow-hidden;
+}
+
+.skeleton-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  animation: shimmer 1.6s infinite;
+}
+
+.dark .skeleton-shimmer::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+}
+
+/* Advanced full-page preloader animations */
+.preloader-mesh {
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(59, 111, 237, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(106, 147, 245, 0.1) 0%, transparent 45%),
+    radial-gradient(ellipse at 60% 80%, rgba(47, 89, 201, 0.08) 0%, transparent 50%);
+  animation: preloader-mesh-shift 8s ease-in-out infinite alternate;
+}
+
+.preloader-grid {
+  background-image:
+    linear-gradient(rgba(59, 111, 237, 0.4) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59, 111, 237, 0.4) 1px, transparent 1px);
+  background-size: 48px 48px;
+  animation: preloader-grid-drift 20s linear infinite;
+}
+
+.preloader-ring-outer {
+  animation: preloader-ring-pulse 2.5s ease-in-out infinite;
+}
+
+.preloader-logo-float {
+  animation: preloader-logo-float 3s ease-in-out infinite;
+}
+
+.preloader-orbit-dot {
+  animation: preloader-orbit 3s linear infinite;
+}
+
+.preloader-progress-bar {
+  width: 40%;
+  animation: preloader-progress 1.8s ease-in-out infinite;
+}
+
+.preloader-text-shimmer {
+  background: linear-gradient(90deg, #64748b 0%, #94a3b8 40%, #64748b 80%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: preloader-text-shimmer 2.2s ease-in-out infinite;
+}
+
+.dark .preloader-text-shimmer {
+  background: linear-gradient(90deg, #64748b 0%, #cbd5e1 40%, #64748b 80%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+@keyframes preloader-mesh-shift {
+  0% { transform: scale(1) translate(0, 0); opacity: 0.6; }
+  100% { transform: scale(1.08) translate(2%, -2%); opacity: 1; }
+}
+
+@keyframes preloader-grid-drift {
+  0% { background-position: 0 0; }
+  100% { background-position: 48px 48px; }
+}
+
+@keyframes preloader-ring-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
+
+@keyframes preloader-logo-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes preloader-orbit {
+  0% { transform: rotate(0deg) translateX(88px) rotate(0deg); opacity: 0.4; }
+  50% { opacity: 1; }
+  100% { transform: rotate(360deg) translateX(88px) rotate(-360deg); opacity: 0.4; }
+}
+
+@keyframes preloader-progress {
+  0% { transform: translateX(-120%); }
+  50% { transform: translateX(80%); }
+  100% { transform: translateX(280%); }
+}
+
+@keyframes preloader-text-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}

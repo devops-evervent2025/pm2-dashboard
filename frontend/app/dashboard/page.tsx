@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import ClientCard from "@/components/ClientCard";
 import AddClientModal from "@/components/AddClientModal";
+import { Spinner, PageLoader, PageLoadingOverlay, LoadingState } from "@/components/Preloader";
 
 export default function DashboardPage() {
   const { role, isLoading } = useAuth();
@@ -38,8 +39,9 @@ export default function DashboardPage() {
   }, [role, isLoading, router, fetchClients]);
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       <Navbar />
+      <div className="relative flex-1 overflow-y-auto min-h-0">
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -53,7 +55,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {loading && <p className="text-slate-500">Loading clients…</p>}
+        <PageLoadingOverlay show={loading} message="Loading clients" subMessage="Fetching client list from dashboard" />
         {error && <p className="text-red-600">{error}</p>}
 
         {!loading && clients.length === 0 && (
@@ -64,11 +66,12 @@ export default function DashboardPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {clients.map((c) => (
-            <ClientCard key={c.id} client={c} onDeleted={fetchClients} />
+            <ClientCard key={c.id} client={c} onDeleted={fetchClients} onUpdated={fetchClients} />
           ))}
         </div>
       </main>
 
+      </div>
       {showAddModal && (
         <AddClientModal onClose={() => setShowAddModal(false)} onCreated={fetchClients} />
       )}

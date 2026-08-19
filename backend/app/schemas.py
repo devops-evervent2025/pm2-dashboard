@@ -43,6 +43,11 @@ class ClientCreate(BaseModel):
     description: Optional[str] = None
 
 
+class ClientUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
 class ClientOut(BaseModel):
     id: int
     name: str

@@ -117,8 +117,9 @@ export default function ServerTerminalPage() {
   };
 
   return (
-    <div className="min-h-screen">
+    <div className="flex flex-col h-full min-h-0">
       <Navbar />
+      <div className="relative flex-1 overflow-y-auto min-h-0">
       <main className="max-w-[100rem] mx-auto px-4 py-8">
         <h1 className="text-2xl font-semibold text-slate-800 mb-2">Server Terminal</h1>
         <p className="text-sm text-slate-500 mb-6">
@@ -263,6 +264,7 @@ export default function ServerTerminalPage() {
         </div>
         </div>
       </main>
+      </div>
     </div>
   );
 }
